@@ -8,11 +8,101 @@ AxonHub is an all-in-one AI development platform that serves as a unified API ga
 
 ### Core Architecture
 - **Transformation Pipeline**: Bidirectional data transformation between clients and AI providers
-- **Unified API Layer**: OpenAI/Anthropic-compatible interfaces with automatic translation
-- **Channel Management**: Multi-provider support with configurable channels
+- **Unified API Layer**: OpenAI/Anthropic/Gemini-compatible interfaces with automatic translation
+- **Channel Management**: Multi-provider support with configurable channels (20+ providers)
 - **Thread-aware Tracing**: Request tracing with thread linking capabilities
-- **Permission System**: RBAC with fine-grained access control
-- **System Management**: Web-based configuration interface
+- **Permission System**: RBAC with fine-grained access control and Ent privacy policies
+- **Multi-project Support**: Project-scoped resource isolation
+- **System Management**: Web-based configuration interface with GraphQL API
+
+## Module Structure
+
+```mermaid
+graph TD
+    A["AxonHub (Root)"] --> B["cmd/axonhub"]
+    A --> C["internal"]
+    A --> D["llm"]
+    A --> E["frontend"]
+    A --> F["conf"]
+    A --> G["integration_test"]
+    A --> H["deploy"]
+    A --> I["docs"]
+    A --> J["scripts"]
+
+    C --> C1["server"]
+    C --> C2["ent"]
+    C --> C3["authz"]
+    C --> C4["scopes"]
+    C --> C5["pkg"]
+    C --> C6["contexts"]
+    C --> C7["objects"]
+    C --> C8["log"]
+    C --> C9["metrics"]
+    C --> C10["tracing"]
+    C --> C11["dumper"]
+    C --> C12["build"]
+
+    C1 --> C1A["api"]
+    C1 --> C1B["biz"]
+    C1 --> C1C["gql"]
+    C1 --> C1D["middleware"]
+    C1 --> C1E["backup"]
+    C1 --> C1F["gc"]
+    C1 --> C1G["dependencies"]
+    C1 --> C1H["static"]
+    C1 --> C1I["db"]
+
+    D --> D1["transformer"]
+    D --> D2["pipeline"]
+    D --> D3["httpclient"]
+    D --> D4["streams"]
+    D --> D5["oauth"]
+
+    D1 --> D1A["openai"]
+    D1 --> D1B["anthropic"]
+    D1 --> D1C["gemini"]
+    D1 --> D1D["deepseek"]
+    D1 --> D1E["aisdk"]
+    D1 --> D1F["antigravity"]
+    D1 --> D1G["+ 10 more"]
+
+    click D "./llm/CLAUDE.md" "LLM module docs"
+    click C1 "./internal/server/CLAUDE.md" "Server module docs"
+    click C2 "./internal/ent/CLAUDE.md" "Ent ORM module docs"
+    click C3 "./internal/authz/CLAUDE.md" "Authz module docs"
+    click C4 "./internal/scopes/CLAUDE.md" "Scopes module docs"
+    click C5 "./internal/pkg/CLAUDE.md" "Pkg utilities docs"
+    click E "./frontend/CLAUDE.md" "Frontend module docs"
+```
+
+## Module Index
+
+| Module | Path | Language | Description | Has Tests | CLAUDE.md |
+|--------|------|----------|-------------|-----------|-----------|
+| Entry Point | `cmd/axonhub/` | Go | Application main, CLI commands | No | -- |
+| Config | `conf/` | Go | YAML/env config loading via Viper | No | -- |
+| LLM | `llm/` | Go (separate module) | Transformer pipeline, 20+ provider adapters | Yes | [Link](./llm/CLAUDE.md) |
+| Server | `internal/server/` | Go | HTTP server, routes, middleware | Yes | [Link](./internal/server/CLAUDE.md) |
+| Business Logic | `internal/server/biz/` | Go | Core services (channels, auth, models, etc.) | Yes (extensive) | -- |
+| API Handlers | `internal/server/api/` | Go | REST API handlers per provider format | Yes | -- |
+| GraphQL | `internal/server/gql/` | Go | GraphQL resolvers and schemas | Yes | -- |
+| Backup | `internal/server/backup/` | Go | Auto-backup and restore | Yes | -- |
+| GC | `internal/server/gc/` | Go | Scheduled database cleanup | Yes | -- |
+| Ent ORM | `internal/ent/` | Go (generated) | Database schemas, CRUD, migrations | Yes | [Link](./internal/ent/CLAUDE.md) |
+| Authorization | `internal/authz/` | Go | Principals, scopes, bypass | Yes | [Link](./internal/authz/CLAUDE.md) |
+| Privacy Rules | `internal/scopes/` | Go | Ent privacy policies, access rules | Yes | [Link](./internal/scopes/CLAUDE.md) |
+| Utilities | `internal/pkg/` | Go | Cache, JSON, Redis, regex, time utils | Yes | [Link](./internal/pkg/CLAUDE.md) |
+| Contexts | `internal/contexts/` | Go | Request context, trace, thread management | Yes | -- |
+| Objects | `internal/objects/` | Go | Shared domain types (GUID, prices, etc.) | Yes | -- |
+| Logging | `internal/log/` | Go | Structured logging with zap | Yes | -- |
+| Metrics | `internal/metrics/` | Go | OpenTelemetry metrics | No | -- |
+| Tracing | `internal/tracing/` | Go | Distributed tracing | Yes | -- |
+| Dumper | `internal/dumper/` | Go | Debug data dumping | Yes | -- |
+| Frontend | `frontend/` | TypeScript/React | Web management dashboard | Yes (Playwright) | [Link](./frontend/CLAUDE.md) |
+| Integration Tests | `integration_test/` | Go | OpenAI/Anthropic/Gemini integration tests | Yes | -- |
+| Deployment | `deploy/` | Shell/YAML | Docker, Helm, systemd, scripts | No | -- |
+| Documentation | `docs/` | Markdown | API reference, guides (en/zh) | No | -- |
+| Scripts | `scripts/` | Shell/JS | E2E, migration, sync, lint scripts | No | -- |
 
 ## Development Commands
 
@@ -24,8 +114,11 @@ go run cmd/axonhub/main.go
 # Generate GraphQL and Ent code (run after schema changes)
 make generate
 
-# Run tests
+# Run tests (root module only)
 go test ./...
+
+# Run all backend tests (root + llm modules)
+make test-backend-all
 
 # Run linting
 golangci-lint run
@@ -111,20 +204,21 @@ make filter-logs                # Filter and analyze load balance logs
 ## Architecture Overview
 
 ### Technology Stack
-- **Backend**: Go 1.25.3+ with Gin HTTP framework, Ent ORM, gqlgen GraphQL, FX dependency injection
-- **Frontend**: React 19 with TypeScript, TanStack Router, TanStack Query, Zustand, Tailwind CSS
+- **Backend**: Go 1.26+ with Gin HTTP framework, Ent ORM, gqlgen GraphQL, FX dependency injection
+- **Frontend**: React 19 with TypeScript 5.8, TanStack Router, TanStack Query, Zustand, Tailwind CSS 4
 - **Database**: SQLite (development), PostgreSQL/MySQL/TiDB (production)
 - **Authentication**: JWT with role-based access control
+- **Go Modules**: Two separate modules -- root (`github.com/looplj/axonhub`) and LLM (`github.com/looplj/axonhub/llm`)
 
 ### Backend Structure
 - **Server Layer** (`internal/server/`): HTTP server and route handling with Gin
 - **Business Logic** (`internal/server/biz/`): Core business logic and services
 - **API Layer** (`internal/server/api/`): REST and GraphQL API handlers
-- **Database** (`internal/ent/`): Ent ORM for database operations with SQLite
-- **LLM Integration** (`internal/llm/`): AI provider transformers and pipeline processing
+- **Database** (`internal/ent/`): Ent ORM for database operations
+- **LLM Integration** (`llm/`): AI provider transformers and pipeline processing (separate Go module)
 - **Context Management** (`internal/contexts/`): Context handling utilities
-- **Utilities** (`internal/pkg/`): Shared utilities (HTTP client, streams, errors, JSON)
-- **Auth & Scopes** (`internal/scopes/`): Permission system with role-based access control
+- **Utilities** (`internal/pkg/`): Shared utilities (cache, JSON, Redis, errors)
+- **Auth & Scopes** (`internal/authz/`, `internal/scopes/`): Permission system with role-based access control
 
 ### Frontend Structure
 - **TanStack Router**: File-based routing in `frontend/src/routes/`
@@ -134,7 +228,7 @@ make filter-logs                # Filter and analyze load balance logs
 - **Shadcn/ui**: Component library with Tailwind CSS
 - **Zustand**: State management in `frontend/src/stores/`
 - **AI SDK**: Integration for enhanced AI capabilities
-- **Feature-based Organization**: Components organized by feature in `frontend/src/features/`
+- **Feature-based Organization**: Components organized by feature in `frontend/src/features/` (18 feature modules)
 - **Shared Components**: Reusable components in `frontend/src/components/`
 - **Custom Hooks**: Shared hooks in `frontend/src/hooks/`
 - **Internationalization**: i18n support in `frontend/src/locales/` (en.json, zh.json)
@@ -143,34 +237,49 @@ make filter-logs                # Filter and analyze load balance logs
 ### Key Components
 
 #### LLM Transformer System
-- **Pipeline Architecture**: Enhanced request processing with retry capabilities
-- **Persistent Transformers**: `PersistentInboundTransformer` and `PersistentOutboundTransformer`
+- **Pipeline Architecture**: Enhanced request processing with cross-channel retry and same-channel retry
+- **Transformer Interfaces**: `Inbound` (client-to-unified), `Outbound` (unified-to-provider), `Transformer` (extended with rerank/embed)
 - **Stream Processing**: Enhanced SSE support with chunk aggregation
-- **Supported Providers**: OpenAI, Anthropic, DeepSeek, AI SDK
+- **Supported Providers**: OpenAI, Anthropic, Gemini, DeepSeek, AI SDK, Bedrock, Antigravity, Bailian, Doubao, Moonshot, OpenRouter, xAI, NanoGPT, ModelScope, Longcat, Zai, Jina, Claude Code, Codex
 - **Auto-save**: Configurable persistence of chat requests and responses
 - **Load Balancing**: Round-robin and failover strategies
+- **Middleware**: Pipeline middleware for max tokens, billing headers, usage extraction
 
 #### Database Schema
 - **Users**: Authentication and role management with soft delete
 - **Roles**: Permission groups with scope-based access
+- **Projects**: Multi-project resource isolation
 - **Channels**: AI provider configurations
-- **API Keys**: Authentication tokens
+- **API Keys**: Authentication tokens with quota support
 - **Requests**: Request logging and execution tracking
+- **Request Executions**: Per-channel execution records
+- **Traces**: Distributed request tracing
+- **Threads**: Conversation threading
+- **Models**: AI model definitions and pricing
+- **Prompts**: Prompt template management
+- **Data Storages**: External data storage configs
+- **Usage Logs**: Detailed cost/usage tracking
+- **Channel Model Prices**: Per-model pricing with versioning
+- **Channel Override Templates**: Request transformation templates
+- **Channel Probes**: Health check results
 - **Systems**: System-wide configuration (storeChunks, etc.)
+- **Provider Quota Status**: Provider-level quota tracking
 - **Soft Delete**: Data safety across all entities
 
 #### Permission System
 - **Enhanced Scopes**: read_channels, write_channels, read_users, read_settings, write_settings
 - **Owner scope**: Full system access
 - **Role-based access control**: Users can have multiple roles
-- **Ent privacy policies**: Database-level permission enforcement
+- **Ent privacy policies**: Database-level permission enforcement via `internal/scopes/`
 - **Granular permissions**: Fine-grained access control
+- **Project-scoped permissions**: Per-project role assignments
 
 #### System Management
 - **Web Interface**: Complete system settings management
 - **Configuration Options**: Controllable persistence and system behavior
 - **Real-time Updates**: Live configuration changes
 - **GraphQL API**: System configuration endpoints
+- **Backup/Restore**: JSON-based backup with auto-scheduling
 
 
 ### Development Workflow
@@ -234,33 +343,39 @@ make filter-logs                # Filter and analyze load balance logs
 
 ### Backend
 - `cmd/axonhub/main.go`: Application entry point
-- `internal/server/server.go`: HTTP server configuration
-- `internal/llm/pipeline/`: Pipeline processing architecture
-- `internal/ent/schema/`: Database schema definitions
+- `internal/server/server.go`: HTTP server configuration and FX bootstrap
+- `internal/server/routes.go`: All HTTP route definitions
+- `llm/pipeline/pipeline.go`: Pipeline factory and execution
+- `llm/transformer/interfaces.go`: Transformer interface definitions
+- `internal/ent/schema/`: Database schema definitions (24 schema files)
 - `internal/pkg/`: Shared utilities and helpers
 - `conf/conf.go`: Configuration loading and validation
-- `internal/server/gql/`: GraphQL schema and resolvers
+- `internal/server/gql/`: GraphQL schema and resolvers (15 `.graphql` files)
+- `internal/server/biz/channel_llm.go`: Channel-to-transformer wiring
 
 ### Frontend
-- `frontend/src/app/`: React Router v7 app directory
-- `frontend/src/features/`: Feature-based component organization
+- `frontend/src/main.tsx`: Application entry point
+- `frontend/src/routes/`: File-based routing (40+ route files)
+- `frontend/src/features/`: Feature-based component organization (18 feature modules)
 - `frontend/src/features/system/`: System management interface
 - `frontend/src/locales/`: Internationalization files (en.json, zh.json)
+- `frontend/src/gql/graphql.ts`: GraphQL client
+- `frontend/src/stores/`: Zustand stores (auth, project)
 
 ### Configuration & Documentation
 - `config.yml` / `config.example.yml`: Main configuration files
 - `AGENTS.md`: Repository guidelines for contributors
 - `README.md` / `README.zh-CN.md`: Project documentation
-- `docs/`: Detailed documentation and architecture diagrams
+- `docs/`: Detailed documentation and architecture diagrams (en + zh)
 
 ## Key Development Patterns
 
 ### Adding a New AI Provider Channel
 When introducing a new provider channel, keep backend and frontend changes aligned:
 
-1. **Extend the channel enum in the Ent schema** – add the provider key to the `field.Enum("type")` list in `internal/ent/schema/channel.go` and regenerate Ent artifacts
-2. **Wire the outbound transformer** – update the switch in `ChannelService.buildChannel` to construct the correct outbound transformer for the new enum
-3. **Sync the frontend schema** – update:
+1. **Extend the channel enum in the Ent schema** -- add the provider key to the `field.Enum("type")` list in `internal/ent/schema/channel.go` and regenerate Ent artifacts
+2. **Wire the outbound transformer** -- update the switch in `ChannelService.buildChannel` to construct the correct outbound transformer for the new enum
+3. **Sync the frontend schema** -- update:
    - Zod schema in `frontend/src/features/channels/data/schema.ts`
    - Channel configuration in `frontend/src/features/channels/data/constants.ts`
    - Internationalization in `frontend/src/locales/en.json` and `frontend/src/locales/zh.json`
@@ -368,7 +483,7 @@ Pre-commit hooks (see `.pre-commit-config.yaml`) also run:
 - Configuration loaded from `conf/conf.go` with YAML and env var support
 - Logging with structured JSON output using zap
 - FX dependency injection framework
-- Go version: 1.25.3+
+- Go version: 1.26+
 - Frontend development server: port 5173 (proxies to backend)
 - Backend API: port 8090
 
@@ -418,7 +533,7 @@ make generate
 ```
 
 ### Debugging Stream Processing
-- Check `internal/llm/pipeline/` for stream aggregation logic
+- Check `llm/pipeline/` for stream aggregation logic
 - Monitor SSE connections in browser DevTools Network tab
 - Use request tracing with `AH-Trace-Id` header for debugging
 
@@ -426,3 +541,14 @@ make generate
 - Use request tracing to identify bottlenecks
 - Monitor database queries with Ent's built-in logging
 - Check channel load balancing configuration for optimal distribution
+
+## AI Usage Guidelines
+
+- Refer to module-specific `CLAUDE.md` files linked in the Module Index above for detailed per-module context.
+- When modifying a specific module, read its CLAUDE.md first for conventions and patterns.
+- The `llm/` directory is a separate Go module; import paths use `github.com/looplj/axonhub/llm/...`.
+- Generated files (in `internal/ent/`, `internal/server/gql/generated.go`, `internal/server/gql/models_gen.go`) should not be manually edited.
+
+## Changelog
+
+- **2026-02-21**: Architecture scan -- added module structure diagram (Mermaid), module index table, expanded provider list, AI usage guidelines, detailed schema list. Created module-level CLAUDE.md for `llm/`, `internal/server/`, `internal/ent/`, `internal/authz/`, `internal/scopes/`, `internal/pkg/`, `frontend/`. Created `.claude/index.json`.
