@@ -35,7 +35,10 @@ services:
 
   # AxonHub 主服务
   axonhub:
-    image: looplj/axonhub:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.prebuilt
+    image: axonhub:local
     container_name: axonhub-app
     environment:
       # 数据库配置可以通过环境变量设置，优先级高于配置文件

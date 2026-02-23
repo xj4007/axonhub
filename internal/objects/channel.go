@@ -128,6 +128,20 @@ type ChannelSettings struct {
 
 	// TransformOptions configures the transform options for the channel.
 	TransformOptions TransformOptions `json:"transformOptions"`
+
+	// DisguiseCliRequest enables Claude CLI detection + conditional disguise.
+	// nil/false = no injection (pass through). true = detect real CLI, only inject for non-CLI.
+	// Only effective for claudecode channel type.
+	DisguiseCliRequest *bool `json:"disguiseCliRequest,omitempty"`
+
+	// UnifiedClientId is the 64-hex-char client identifier used to replace the user_id client part.
+	// Only effective when DisguiseCliRequest is true.
+	UnifiedClientId string `json:"unifiedClientId,omitempty"`
+
+	// BillingHeaderValue is the x-anthropic-billing-header value to inject as system[0].
+	// Example: "x-anthropic-billing-header: cc_version=2.1.50.b97; cc_entrypoint=cli; cch=00000;"
+	// Only effective when DisguiseCliRequest is true.
+	BillingHeaderValue string `json:"billingHeaderValue,omitempty"`
 }
 
 // DisabledAPIKey 记录被禁用的 API key 信息（敏感，按 credentials 同级保护）

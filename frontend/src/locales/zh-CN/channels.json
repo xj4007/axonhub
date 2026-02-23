@@ -567,5 +567,14 @@
   "channels.messages.enableSelectedAPIKeysError": "启用选中的 API 密钥失败：{{error}}",
   "channels.messages.deleteDisabledAPIKeysSuccess": "API 密钥删除成功",
   "channels.messages.deleteDisabledAPIKeysPreserved": "API 密钥已删除，但至少保留了一个密钥以确保渠道可用",
-  "channels.messages.deleteDisabledAPIKeysError": "删除 API 密钥失败：{{error}}"
+  "channels.messages.deleteDisabledAPIKeysError": "删除 API 密钥失败：{{error}}",
+  "channels.dialogs.fields.disguiseCliRequest.label": "伪装 CLI 请求",
+  "channels.dialogs.fields.disguiseCliRequest.description": "启用后，非 Claude CLI 客户端的请求将被伪装为 Claude Code CLI 请求（注入系统提示词、客户端标识和专用请求头）",
+  "channels.dialogs.fields.disguiseCliRequest.unifiedClientId.label": "统一客户端标识",
+  "channels.dialogs.fields.disguiseCliRequest.unifiedClientId.regenerate": "重新生成",
+  "channels.dialogs.fields.disguiseCliRequest.unifiedClientId.placeholder": "留空则自动生成随机标识",
+  "channels.dialogs.fields.disguiseCliRequest.unifiedClientId.help": "64 位十六进制字符串，替换 user_id 中的客户端标识部分。留空则每次请求生成随机标识",
+  "channels.dialogs.fields.disguiseCliRequest.billingHeader.label": "Billing Header",
+  "channels.dialogs.fields.disguiseCliRequest.billingHeader.useDefault": "使用默认值",
+  "channels.dialogs.fields.disguiseCliRequest.billingHeader.help": "注入到系统提示词 system[0] 的 x-anthropic-billing-header 值。如已存在则替换，不存在则注入"
 }

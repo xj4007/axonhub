@@ -331,3 +331,101 @@ func injectClaudeCodeSystemMessageStructured(llmReq *llm.Request) *llm.Request {
 
 	return llmReq
 }
+
+// injectOrReplaceBillingHeader handles the x-anthropic-billing-header in system messages.
+// If a billing header already exists in system[0], replace it with the configured value.
+// If no billing header exists, inject it as a new system[0].
+// If billingHeaderValue is empty, this is a no-op.
+func injectOrReplaceBillingHeader(llmReq *llm.Request, billingHeaderValue string) *llm.Request {
+	if billingHeaderValue == "" {
+		return llmReq
+	}
+
+	// Check if system[0] already has a billing header
+	if len(llmReq.Messages) > 0 && llmReq.Messages[0].Role == "system" {
+		msg := &llmReq.Messages[0]
+		if msg.Content.Content != nil &&
+			strings.HasPrefix(strings.TrimSpace(strings.ToLower(*msg.Content.Content)), billingHeaderPrefix) {
+			// Replace existing billing header
+			*msg.Content.Content = billingHeaderValue
+			return llmReq
+		}
+		// Also check MultipleContent[0]
+		if len(msg.Content.MultipleContent) > 0 &&
+			msg.Content.MultipleContent[0].Type == "text" &&
+			msg.Content.MultipleContent[0].Text != nil &&
+			strings.HasPrefix(strings.TrimSpace(strings.ToLower(*msg.Content.MultipleContent[0].Text)), billingHeaderPrefix) {
+			*msg.Content.MultipleContent[0].Text = billingHeaderValue
+			return llmReq
+		}
+	}
+
+	// No existing billing header found — inject as new system[0]
+	billingMsg := llm.Message{
+		Role: "system",
+		Content: llm.MessageContent{
+			Content: func() *string { s := billingHeaderValue; return &s }(),
+		},
+	}
+	llmReq.Messages = append([]llm.Message{billingMsg}, llmReq.Messages...)
+
+	return llmReq
+}
+
+// isRealCliRequest performs 3-step detection to determine if the request
+// originates from a real Claude CLI client.
+func isRealCliRequest(rawUA string, req *llm.Request) bool {
+	if !isClaudeCLIUserAgent(rawUA) {
+		return false
+	}
+	if !hasClaudeCodeIdentity(req) {
+		return false
+	}
+	if req.Metadata == nil {
+		return false
+	}
+	userID := req.Metadata["user_id"]
+	return userID != "" && isValidUserID(userID)
+}
+
+// hasClaudeCodeIdentity checks if the request contains Claude Code identity in the system messages.
+func hasClaudeCodeIdentity(req *llm.Request) bool {
+	for _, msg := range req.Messages {
+		if msg.Role != "system" {
+			continue
+		}
+		if msg.Content.Content != nil && checkClaudeIdentity(*msg.Content.Content) {
+			return true
+		}
+		for _, part := range msg.Content.MultipleContent {
+			if part.Type == "text" && part.Text != nil && checkClaudeIdentity(*part.Text) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func checkClaudeIdentity(text string) bool {
+	return strings.Contains(text, "You are Claude Code, Anthropic's official CLI for Claude") ||
+		strings.Contains(text, "You are a Claude agent, built on Anthropic's Claude Agent SDK")
+}
+
+// injectOrReplaceUserID replaces user_id with unified client ID or generates a new one.
+func injectOrReplaceUserID(llmReq *llm.Request, unifiedClientId string) *llm.Request {
+	if llmReq.Metadata == nil {
+		llmReq.Metadata = make(map[string]string)
+	}
+
+	existingUserID := llmReq.Metadata["user_id"]
+	if existingUserID != "" && isValidUserID(existingUserID) {
+		idx := strings.Index(existingUserID, "_account__session_")
+		if idx != -1 {
+			llmReq.Metadata["user_id"] = "user_" + unifiedClientId + existingUserID[idx:]
+			return llmReq
+		}
+	}
+
+	llmReq.Metadata["user_id"] = "user_" + unifiedClientId + "_account__session_" + uuid.New().String()
+	return llmReq
+}

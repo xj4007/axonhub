@@ -426,7 +426,9 @@ type ComplexityRoot struct {
 
 	ChannelSettings struct {
 		AutoTrimedModelPrefixes  func(childComplexity int) int
+		BillingHeaderValue       func(childComplexity int) int
 		BodyOverrideOperations   func(childComplexity int) int
+		DisguiseCliRequest       func(childComplexity int) int
 		ExtraModelPrefix         func(childComplexity int) int
 		HeaderOverrideOperations func(childComplexity int) int
 		HideMappedModels         func(childComplexity int) int
@@ -434,6 +436,7 @@ type ComplexityRoot struct {
 		ModelMappings            func(childComplexity int) int
 		Proxy                    func(childComplexity int) int
 		TransformOptions         func(childComplexity int) int
+		UnifiedClientId          func(childComplexity int) int
 	}
 
 	ChannelSuccessRate struct {
@@ -3104,12 +3107,24 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.ChannelSettings.AutoTrimedModelPrefixes(childComplexity), true
+	case "ChannelSettings.billingHeaderValue":
+		if e.complexity.ChannelSettings.BillingHeaderValue == nil {
+			break
+		}
+
+		return e.complexity.ChannelSettings.BillingHeaderValue(childComplexity), true
 	case "ChannelSettings.bodyOverrideOperations":
 		if e.complexity.ChannelSettings.BodyOverrideOperations == nil {
 			break
 		}
 
 		return e.complexity.ChannelSettings.BodyOverrideOperations(childComplexity), true
+	case "ChannelSettings.disguiseCliRequest":
+		if e.complexity.ChannelSettings.DisguiseCliRequest == nil {
+			break
+		}
+
+		return e.complexity.ChannelSettings.DisguiseCliRequest(childComplexity), true
 	case "ChannelSettings.extraModelPrefix":
 		if e.complexity.ChannelSettings.ExtraModelPrefix == nil {
 			break
@@ -3152,6 +3167,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.ChannelSettings.TransformOptions(childComplexity), true
+	case "ChannelSettings.unifiedClientId":
+		if e.complexity.ChannelSettings.UnifiedClientId == nil {
+			break
+		}
+
+		return e.complexity.ChannelSettings.UnifiedClientId(childComplexity), true
 
 	case "ChannelSuccessRate.channelId":
 		if e.complexity.ChannelSuccessRate.ChannelID == nil {
@@ -14162,6 +14183,12 @@ func (ec *executionContext) fieldContext_Channel_settings(_ context.Context, fie
 				return ec.fieldContext_ChannelSettings_headerOverrideOperations(ctx, field)
 			case "bodyOverrideOperations":
 				return ec.fieldContext_ChannelSettings_bodyOverrideOperations(ctx, field)
+			case "disguiseCliRequest":
+				return ec.fieldContext_ChannelSettings_disguiseCliRequest(ctx, field)
+			case "unifiedClientId":
+				return ec.fieldContext_ChannelSettings_unifiedClientId(ctx, field)
+			case "billingHeaderValue":
+				return ec.fieldContext_ChannelSettings_billingHeaderValue(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type ChannelSettings", field.Name)
 		},
@@ -17952,6 +17979,93 @@ func (ec *executionContext) fieldContext_ChannelSettings_bodyOverrideOperations(
 				return ec.fieldContext_OverrideOperation_condition(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type OverrideOperation", field.Name)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _ChannelSettings_disguiseCliRequest(ctx context.Context, field graphql.CollectedField, obj *objects.ChannelSettings) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_ChannelSettings_disguiseCliRequest,
+		func(ctx context.Context) (any, error) {
+			return obj.DisguiseCliRequest, nil
+		},
+		nil,
+		ec.marshalOBoolean2ᚖbool,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_ChannelSettings_disguiseCliRequest(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "ChannelSettings",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Boolean does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _ChannelSettings_unifiedClientId(ctx context.Context, field graphql.CollectedField, obj *objects.ChannelSettings) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_ChannelSettings_unifiedClientId,
+		func(ctx context.Context) (any, error) {
+			return obj.UnifiedClientId, nil
+		},
+		nil,
+		ec.marshalOString2string,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_ChannelSettings_unifiedClientId(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "ChannelSettings",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _ChannelSettings_billingHeaderValue(ctx context.Context, field graphql.CollectedField, obj *objects.ChannelSettings) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_ChannelSettings_billingHeaderValue,
+		func(ctx context.Context) (any, error) {
+			return obj.BillingHeaderValue, nil
+		},
+		nil,
+		ec.marshalOString2string,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_ChannelSettings_billingHeaderValue(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "ChannelSettings",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
 		},
 	}
 	return fc, nil
@@ -49286,7 +49400,7 @@ func (ec *executionContext) unmarshalInputChannelSettingsInput(ctx context.Conte
 		asMap[k] = v
 	}
 
-	fieldsInOrder := [...]string{"extraModelPrefix", "modelMappings", "autoTrimedModelPrefixes", "hideOriginalModels", "hideMappedModels", "proxy", "transformOptions", "headerOverrideOperations", "bodyOverrideOperations"}
+	fieldsInOrder := [...]string{"extraModelPrefix", "modelMappings", "autoTrimedModelPrefixes", "hideOriginalModels", "hideMappedModels", "proxy", "transformOptions", "headerOverrideOperations", "bodyOverrideOperations", "disguiseCliRequest", "unifiedClientId", "billingHeaderValue"}
 	for _, k := range fieldsInOrder {
 		v, ok := asMap[k]
 		if !ok {
@@ -49356,6 +49470,27 @@ func (ec *executionContext) unmarshalInputChannelSettingsInput(ctx context.Conte
 				return it, err
 			}
 			it.BodyOverrideOperations = data
+		case "disguiseCliRequest":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("disguiseCliRequest"))
+			data, err := ec.unmarshalOBoolean2ᚖbool(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.DisguiseCliRequest = data
+		case "unifiedClientId":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("unifiedClientId"))
+			data, err := ec.unmarshalOString2string(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.UnifiedClientId = data
+		case "billingHeaderValue":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("billingHeaderValue"))
+			data, err := ec.unmarshalOString2string(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.BillingHeaderValue = data
 		}
 	}
 
@@ -69883,6 +70018,12 @@ func (ec *executionContext) _ChannelSettings(ctx context.Context, sel ast.Select
 			}
 
 			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+		case "disguiseCliRequest":
+			out.Values[i] = ec._ChannelSettings_disguiseCliRequest(ctx, field, obj)
+		case "unifiedClientId":
+			out.Values[i] = ec._ChannelSettings_unifiedClientId(ctx, field, obj)
+		case "billingHeaderValue":
+			out.Values[i] = ec._ChannelSettings_billingHeaderValue(ctx, field, obj)
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}

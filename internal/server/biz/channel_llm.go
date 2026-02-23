@@ -274,6 +274,16 @@ func (svc *ChannelService) buildChannelWithTransformer(c *ent.Channel) (*Channel
 
 		return ch, nil
 	case channel.TypeClaudecode:
+		// Extract disguise settings
+		var disguiseCliRequest *bool
+		var unifiedClientId string
+		var billingHeaderValue string
+		if c.Settings != nil {
+			disguiseCliRequest = c.Settings.DisguiseCliRequest
+			unifiedClientId = c.Settings.UnifiedClientId
+			billingHeaderValue = c.Settings.BillingHeaderValue
+		}
+
 		// Check if using OAuth credentials first
 		if c.Credentials.IsOAuth() {
 			credsJSON := strings.TrimSpace(c.Credentials.APIKey)
@@ -307,9 +317,12 @@ func (svc *ChannelService) buildChannelWithTransformer(c *ent.Channel) (*Channel
 			})
 
 			transformer, err := claudecode.NewOutboundTransformer(claudecode.Params{
-				TokenProvider: tokens,
-				BaseURL:       c.BaseURL,
-				IsOfficial:    true,
+				TokenProvider:      tokens,
+				BaseURL:            c.BaseURL,
+				IsOfficial:         true,
+				DisguiseCliRequest: disguiseCliRequest,
+				UnifiedClientId:    unifiedClientId,
+				BillingHeaderValue: billingHeaderValue,
 			})
 			if err != nil {
 				return nil, fmt.Errorf("failed to create claudecode outbound transformer: %w", err)
@@ -329,9 +342,12 @@ func (svc *ChannelService) buildChannelWithTransformer(c *ent.Channel) (*Channel
 		tokens := oauth.NewAPIKeyTokenProvider(apiKeyProvider.Get)
 
 		transformer, err := claudecode.NewOutboundTransformer(claudecode.Params{
-			TokenProvider: tokens,
-			BaseURL:       c.BaseURL,
-			IsOfficial:    false,
+			TokenProvider:      tokens,
+			BaseURL:            c.BaseURL,
+			IsOfficial:         false,
+			DisguiseCliRequest: disguiseCliRequest,
+			UnifiedClientId:    unifiedClientId,
+			BillingHeaderValue: billingHeaderValue,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("failed to create claudecode outbound transformer: %w", err)

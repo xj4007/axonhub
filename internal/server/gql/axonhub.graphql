@@ -78,6 +78,9 @@ type ChannelSettings {
   transformOptions: TransformOptions
   headerOverrideOperations: [OverrideOperation!]! @goField(forceResolver: true)
   bodyOverrideOperations: [OverrideOperation!]! @goField(forceResolver: true)
+  disguiseCliRequest: Boolean
+  unifiedClientId: String
+  billingHeaderValue: String
 }
 
 enum CapabilityPolicy {
@@ -109,6 +112,9 @@ input ChannelSettingsInput {
   transformOptions: TransformOptionsInput
   headerOverrideOperations: [OverrideOperationInput!]
   bodyOverrideOperations: [OverrideOperationInput!]
+  disguiseCliRequest: Boolean
+  unifiedClientId: String
+  billingHeaderValue: String
 }
 
 type ChannelCredentials {

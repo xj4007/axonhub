@@ -97,6 +97,9 @@ const CREATE_CHANNEL_MUTATION = `
             forceArrayInputs
             replaceDeveloperRoleWithSystem
           }
+          disguiseCliRequest
+          unifiedClientId
+          billingHeaderValue
         }
       orderingWeight
       remark
@@ -187,6 +190,9 @@ const UPDATE_CHANNEL_MUTATION = `
             forceArrayInputs
             replaceDeveloperRoleWithSystem
           }
+          disguiseCliRequest
+          unifiedClientId
+          billingHeaderValue
         }
       orderingWeight
       errorMessage
@@ -575,6 +581,9 @@ const QUERY_CHANNELS_QUERY = `
               forceArrayInputs
               replaceDeveloperRoleWithSystem
             }
+            disguiseCliRequest
+            unifiedClientId
+            billingHeaderValue
           }
           orderingWeight
           errorMessage

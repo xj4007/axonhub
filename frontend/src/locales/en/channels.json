@@ -564,5 +564,14 @@
   "channels.messages.enableSelectedAPIKeysError": "Failed to enable selected API keys: {{error}}",
   "channels.messages.deleteDisabledAPIKeysSuccess": "API keys deleted successfully",
   "channels.messages.deleteDisabledAPIKeysPreserved": "API keys deleted, but at least one key was preserved to keep the channel available",
-  "channels.messages.deleteDisabledAPIKeysError": "Failed to delete API keys: {{error}}"
+  "channels.messages.deleteDisabledAPIKeysError": "Failed to delete API keys: {{error}}",
+  "channels.dialogs.fields.disguiseCliRequest.label": "Disguise CLI Request",
+  "channels.dialogs.fields.disguiseCliRequest.description": "When enabled, non-Claude CLI requests will be disguised as Claude Code CLI requests (inject system prompt, client identifier, and headers)",
+  "channels.dialogs.fields.disguiseCliRequest.unifiedClientId.label": "Unified Client ID",
+  "channels.dialogs.fields.disguiseCliRequest.unifiedClientId.regenerate": "Regenerate",
+  "channels.dialogs.fields.disguiseCliRequest.unifiedClientId.placeholder": "Leave empty to generate random ID",
+  "channels.dialogs.fields.disguiseCliRequest.unifiedClientId.help": "64-char hex string to replace the client identifier in user_id. Leave empty to generate a random identifier per request",
+  "channels.dialogs.fields.disguiseCliRequest.billingHeader.label": "Billing Header",
+  "channels.dialogs.fields.disguiseCliRequest.billingHeader.useDefault": "Use Default",
+  "channels.dialogs.fields.disguiseCliRequest.billingHeader.help": "The x-anthropic-billing-header value to inject as system[0]. Replaces existing billing header if present, otherwise injects as new element"
 }

@@ -151,6 +151,9 @@ export const channelSettingsSchema = z.object({
   headerOverrideOperations: z.array(overrideOperationSchema).optional(),
   proxy: proxyConfigSchema.optional().nullable(),
   transformOptions: transformOptionsSchema.optional(),
+  disguiseCliRequest: z.boolean().optional().nullable(),
+  unifiedClientId: z.string().optional().nullable(),
+  billingHeaderValue: z.string().optional().nullable(),
 });
 export type ChannelSettings = z.infer<typeof channelSettingsSchema>;
 

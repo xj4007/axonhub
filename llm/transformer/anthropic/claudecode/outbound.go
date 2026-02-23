@@ -42,9 +42,12 @@ var claudeCodeHeaders = [][]string{
 
 // Params contains parameters for creating a ClaudeCodeTransformer.
 type Params struct {
-	TokenProvider oauth.TokenGetter // OAuth token provider (required)
-	BaseURL       string            // Base URL for the Anthropic API (optional)
-	IsOfficial    bool              // Whether the channel uses official OAuth credentials
+	TokenProvider      oauth.TokenGetter // OAuth token provider (required)
+	BaseURL            string            // Base URL for the Anthropic API (optional)
+	IsOfficial         bool              // Whether the channel uses official OAuth credentials
+	DisguiseCliRequest *bool             // nil/false = no injection (pass through), true = detect+disguise
+	UnifiedClientId    string            // optional unified client ID (64-hex-char)
+	BillingHeaderValue string            // optional billing header value to inject as system[0]
 }
 
 // NewOutboundTransformer creates a new ClaudeCodeTransformer with OAuth authentication.
@@ -68,9 +71,12 @@ func NewOutboundTransformer(params Params) (*ClaudeCodeTransformer, error) {
 	}
 
 	return &ClaudeCodeTransformer{
-		Outbound:   outbound,
-		tokens:     params.TokenProvider,
-		isOfficial: params.IsOfficial,
+		Outbound:           outbound,
+		tokens:             params.TokenProvider,
+		isOfficial:         params.IsOfficial,
+		disguiseCliRequest: params.DisguiseCliRequest,
+		unifiedClientId:    params.UnifiedClientId,
+		billingHeaderValue: params.BillingHeaderValue,
 	}, nil
 }
 
@@ -78,8 +84,11 @@ func NewOutboundTransformer(params Params) (*ClaudeCodeTransformer, error) {
 // It wraps an OutboundTransformer and adds Claude Code specific headers and system message.
 type ClaudeCodeTransformer struct {
 	transformer.Outbound
-	tokens     oauth.TokenGetter
-	isOfficial bool
+	tokens             oauth.TokenGetter
+	isOfficial         bool
+	disguiseCliRequest *bool
+	unifiedClientId    string
+	billingHeaderValue string
 }
 
 // TransformRequest overrides the base TransformRequest to add Claude Code specific modifications.
@@ -119,11 +128,32 @@ func (t *ClaudeCodeTransformer) TransformRequest(
 
 	// Apply structured transformations before serialization
 	reqCopy = *disableThinkingIfToolChoiceForcedStructured(&reqCopy)
-	reqCopy = *injectClaudeCodeSystemMessageStructured(&reqCopy)
+
+	// Compute whether to inject CLI disguise.
+	// Default: no injection. Only inject when disguise is explicitly enabled AND request is not from real CLI.
+	shouldInject := false
+	if t.disguiseCliRequest != nil && *t.disguiseCliRequest {
+		if isRealCliRequest(rawUA, &reqCopy) {
+			keepClientUA = true
+		} else {
+			shouldInject = true
+		}
+	}
+
+	if shouldInject {
+		reqCopy = *injectOrReplaceBillingHeader(&reqCopy, t.billingHeaderValue)
+		reqCopy = *injectClaudeCodeSystemMessageStructured(&reqCopy)
+	}
 	if t.isOfficial {
 		reqCopy = *ensureBillingSystemMessageCCH(&reqCopy)
 	}
-	reqCopy = *injectFakeUserIDStructured(&reqCopy)
+	if shouldInject {
+		if t.unifiedClientId != "" {
+			reqCopy = *injectOrReplaceUserID(&reqCopy, t.unifiedClientId)
+		} else {
+			reqCopy = *injectFakeUserIDStructured(&reqCopy)
+		}
+	}
 	if t.isOfficial && !keepClientUA {
 		reqCopy = *applyClaudeToolPrefixStructured(&reqCopy, toolPrefix)
 	}

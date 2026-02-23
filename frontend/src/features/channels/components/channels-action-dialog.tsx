@@ -252,6 +252,25 @@ export function ChannelsActionDialog({ currentRow, duplicateFromRow, open, onOpe
   const [proxyUsername, setProxyUsername] = useState(() => initialRow?.settings?.proxy?.username || '');
   const [proxyPassword, setProxyPassword] = useState(() => initialRow?.settings?.proxy?.password || '');
 
+  // Claude Code disguise settings
+  const [disguiseCliRequest, setDisguiseCliRequest] = useState<boolean>(
+    initialRow?.settings?.disguiseCliRequest ?? false
+  );
+  const [unifiedClientId, setUnifiedClientId] = useState<string>(
+    initialRow?.settings?.unifiedClientId ?? ''
+  );
+  const [billingHeaderValue, setBillingHeaderValue] = useState<string>(
+    initialRow?.settings?.billingHeaderValue ?? ''
+  );
+
+  const defaultBillingHeaderValue = 'x-anthropic-billing-header: cc_version=2.1.50.b97; cc_entrypoint=cli; cch=00000;';
+
+  const generateUnifiedClientId = useCallback(() => {
+    const array = new Uint8Array(32);
+    crypto.getRandomValues(array);
+    return Array.from(array).map(b => b.toString(16).padStart(2, '0')).join('');
+  }, []);
+
   // Memoized proxy config for OAuth exchange
   const proxyConfig: ProxyConfig | undefined = useMemo(() => {
     if (proxyType === ProxyType.URL && proxyUrl) {
@@ -861,9 +880,17 @@ export function ChannelsActionDialog({ currentRow, duplicateFromRow, open, onOpe
       }
 
       if (isEdit && currentRow) {
+        const disguiseSettings = isClaudeCodeType && disguiseCliRequest
+          ? {
+              disguiseCliRequest: true as const,
+              unifiedClientId: unifiedClientId || undefined,
+              billingHeaderValue: billingHeaderValue || undefined,
+            }
+          : { disguiseCliRequest: undefined, unifiedClientId: undefined, billingHeaderValue: undefined };
+
         const updateInput = {
           ...dataWithModels,
-          settings: undefined,
+          settings: mergeChannelSettingsForUpdate(currentRow.settings, disguiseSettings),
           type: undefined,
         } as z.infer<typeof updateChannelInputSchema>;
 
@@ -899,6 +926,15 @@ export function ChannelsActionDialog({ currentRow, duplicateFromRow, open, onOpe
 
         const nextSettings = mergeChannelSettingsForUpdate(values.settings, {
           proxy: proxyConfig,
+          ...(isClaudeCodeType && disguiseCliRequest ? {
+            disguiseCliRequest: true,
+            unifiedClientId: unifiedClientId || undefined,
+            billingHeaderValue: billingHeaderValue || undefined,
+          } : {
+            disguiseCliRequest: undefined,
+            unifiedClientId: undefined,
+            billingHeaderValue: undefined,
+          }),
         });
 
         await createChannel.mutateAsync({
@@ -910,6 +946,9 @@ export function ChannelsActionDialog({ currentRow, duplicateFromRow, open, onOpe
       form.reset();
       setSupportedModels([]);
       setManualModels([]);
+      setDisguiseCliRequest(false);
+      setUnifiedClientId('');
+      setBillingHeaderValue('');
       onOpenChange(false);
     } catch (_error) {
       void _error;
@@ -1980,6 +2019,80 @@ export function ChannelsActionDialog({ currentRow, duplicateFromRow, open, onOpe
                           </FormItem>
                         )}
                       />
+
+                      {/* Claude Code Disguise CLI Request */}
+                      {isClaudeCodeType && (
+                        <FormItem className='grid grid-cols-1 items-start gap-x-6 gap-y-2 md:grid-cols-8'>
+                          <FormLabel className='pt-2 font-medium md:col-span-2 md:text-right'>
+                            {t('channels.dialogs.fields.disguiseCliRequest.label')}
+                          </FormLabel>
+                          <div className='space-y-3 md:col-span-6'>
+                            <div className='flex items-center gap-2'>
+                              <Checkbox
+                                checked={disguiseCliRequest}
+                                onCheckedChange={(checked) => setDisguiseCliRequest(!!checked)}
+                              />
+                              <p className='text-muted-foreground text-xs'>
+                                {t('channels.dialogs.fields.disguiseCliRequest.description')}
+                              </p>
+                            </div>
+
+                            {disguiseCliRequest && (
+                              <>
+                              <div className='rounded-md border p-3 space-y-2'>
+                                <div className='flex items-center justify-between'>
+                                  <span className='text-xs font-medium'>
+                                    {t('channels.dialogs.fields.disguiseCliRequest.unifiedClientId.label')}
+                                  </span>
+                                  <Button
+                                    type='button'
+                                    variant='outline'
+                                    size='sm'
+                                    onClick={() => setUnifiedClientId(generateUnifiedClientId())}
+                                  >
+                                    {t('channels.dialogs.fields.disguiseCliRequest.unifiedClientId.regenerate')}
+                                  </Button>
+                                </div>
+                                <Input
+                                  value={unifiedClientId}
+                                  onChange={(e) => setUnifiedClientId(e.target.value)}
+                                  placeholder={t('channels.dialogs.fields.disguiseCliRequest.unifiedClientId.placeholder')}
+                                  className='font-mono text-xs'
+                                />
+                                <p className='text-muted-foreground text-xs'>
+                                  {t('channels.dialogs.fields.disguiseCliRequest.unifiedClientId.help')}
+                                </p>
+                              </div>
+
+                              <div className='rounded-md border p-3 space-y-2'>
+                                <div className='flex items-center justify-between'>
+                                  <span className='text-xs font-medium'>
+                                    {t('channels.dialogs.fields.disguiseCliRequest.billingHeader.label')}
+                                  </span>
+                                  <Button
+                                    type='button'
+                                    variant='outline'
+                                    size='sm'
+                                    onClick={() => setBillingHeaderValue(defaultBillingHeaderValue)}
+                                  >
+                                    {t('channels.dialogs.fields.disguiseCliRequest.billingHeader.useDefault')}
+                                  </Button>
+                                </div>
+                                <Input
+                                  value={billingHeaderValue}
+                                  onChange={(e) => setBillingHeaderValue(e.target.value)}
+                                  placeholder={defaultBillingHeaderValue}
+                                  className='font-mono text-xs'
+                                />
+                                <p className='text-muted-foreground text-xs'>
+                                  {t('channels.dialogs.fields.disguiseCliRequest.billingHeader.help')}
+                                </p>
+                              </div>
+                              </>
+                            )}
+                          </div>
+                        </FormItem>
+                      )}
 
                       <FormField
                         control={form.control}
