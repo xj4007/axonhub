@@ -13,8 +13,10 @@ import (
 	"github.com/looplj/axonhub/llm"
 	"github.com/looplj/axonhub/llm/httpclient"
 	"github.com/looplj/axonhub/llm/pipeline"
+	"github.com/looplj/axonhub/llm/pipeline/cc"
 	"github.com/looplj/axonhub/llm/streams"
 	"github.com/looplj/axonhub/llm/transformer"
+	"reflect"
 )
 
 // OutboundPersistentStream wraps a stream and tracks all responses for final saving to database.
@@ -247,8 +249,13 @@ func (p *PersistentOutboundTransformer) TransformRequest(ctx context.Context, ll
 
 	llmRequest.Model = entry.ActualModel
 
+	injectCacheDisguiseMetadata(llmRequest, candidate.Channel)
 	// Apply channel transform options to create a new request
 	llmRequest = applyTransformOptions(llmRequest, candidate.Channel.Settings)
+
+	// Expose current llm.Request on context so middlewares that run in outbound stage can read
+	// per-attempt metadata injected by orchestrator (e.g. cc_simulate_cache_*).
+	ctx = context.WithValue(ctx, ccLlmRequestContextKey{}, llmRequest)
 
 	return p.wrapped.TransformRequest(ctx, llmRequest)
 }
@@ -412,13 +419,34 @@ func (p *PersistentOutboundTransformer) PrepareForRetry(ctx context.Context) err
 	return nil
 }
 
-// CustomizeExecutor customizes the executor for the current channel.
-// If the current channel has an executor, it will be used.
-// Otherwise, the default executor will be used.
+// injectCacheDisguiseMetadata stores per-channel simulate-cache configuration into request metadata
+// so cc.PromptCacheDisguise can make runtime decisions without global state.
 //
-// The customized executor will be used to execute the request.
-// e.g. the aws bedrock process need a custom executor to handle the request.
-// It implements the pipeline.ChannelCustomizedExecutor interface.
+//nolint:dupword // Keep wording concise and clear.
+func injectCacheDisguiseMetadata(request *llm.Request, channel *biz.Channel) {
+	if request == nil {
+		return
+	}
+
+	if request.Metadata == nil {
+		request.Metadata = make(map[string]string)
+	}
+
+	enabled := false
+	mode := "ephemeral_5m_input_tokens"
+
+	if channel != nil && channel.Settings != nil {
+		enabled = channel.Settings.SimulateCache != nil && *channel.Settings.SimulateCache
+
+		if channel.Settings.SimulateCacheMode == "ephemeral_1h_input_tokens" {
+			mode = "ephemeral_1h_input_tokens"
+		}
+	}
+
+	request.Metadata[cc.CacheDisguiseEnabledMetadataKey] = fmt.Sprintf("%t", enabled)
+	request.Metadata[cc.CacheDisguiseModeMetadataKey] = mode
+}
+
 func (p *PersistentOutboundTransformer) CustomizeExecutor(executor pipeline.Executor) pipeline.Executor {
 	// Start with the default executor, then layer customizations.
 	customizedExecutor := executor
@@ -441,4 +469,85 @@ func (p *PersistentOutboundTransformer) CustomizeExecutor(executor pipeline.Exec
 	}
 
 	return customizedExecutor
+}
+
+// ccLlmRequestContextKey is used to pass the unified llm.Request pointer through context
+// so pipeline middlewares can access per-attempt metadata injected during outbound.TransformRequest.
+//
+// IMPORTANT: This key must remain in sync with llm/pipeline/cc/cache_disguise.go (llmRequestContextKey).
+type ccLlmRequestContextKey struct{}
+
+func updateCacheDisguiseMarker(ctx context.Context, request *llm.Request, channel *biz.Channel) {
+	if ctx == nil || request == nil {
+		log.Info(ctx, "simulate-cache update marker skipped", log.String("reason", "nil_ctx_or_request"))
+		return
+	}
+
+	requestKey := cacheDisguiseRequestKey(ctx)
+	if requestKey == "" {
+		log.Info(ctx, "simulate-cache update marker skipped", log.String("reason", "empty_request_key"))
+		return
+	}
+
+	mw, ok := lookupPromptCacheDisguiseMiddleware(channel)
+	if !ok {
+		log.Info(ctx, "simulate-cache update marker skipped",
+			log.String("reason", "middleware_not_found"),
+			log.Any("outbound_type", fmt.Sprintf("%T", func() any { if channel == nil { return nil }; return channel.Outbound }())),
+		)
+		return
+	}
+
+	enabled := false
+	mode := "ephemeral_5m_input_tokens"
+	if channel != nil && channel.Settings != nil {
+		enabled = channel.Settings.SimulateCache != nil && *channel.Settings.SimulateCache
+		if channel.Settings.SimulateCacheMode == "ephemeral_1h_input_tokens" {
+			mode = "ephemeral_1h_input_tokens"
+		}
+	}
+
+	log.Info(ctx, "simulate-cache update marker",
+		log.String("request_key", requestKey),
+		log.String("channel", func() string { if channel == nil { return "" }; return channel.Name }()),
+		log.Bool("enabled", enabled),
+		log.String("mode", mode),
+	)
+
+	mw.UpdateRequestMarker(requestKey, enabled, mode)
+}
+
+func lookupPromptCacheDisguiseMiddleware(channel *biz.Channel) (*cc.PromptCacheDisguiseMiddleware, bool) {
+	if channel == nil || channel.Outbound == nil {
+		return nil, false
+	}
+
+	v := reflect.ValueOf(channel.Outbound)
+	for v.IsValid() {
+		if v.Kind() == reflect.Interface || v.Kind() == reflect.Pointer {
+			if v.IsNil() {
+				return nil, false
+			}
+			if mw, ok := v.Interface().(*cc.PromptCacheDisguiseMiddleware); ok {
+				return mw, true
+			}
+			v = v.Elem()
+			continue
+		}
+		break
+	}
+
+	return nil, false
+}
+
+func cacheDisguiseRequestKey(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+
+	if v := reflect.ValueOf(ctx); v.Kind() == reflect.Pointer && v.Pointer() != 0 {
+		return fmt.Sprintf("ctx:%x", v.Pointer())
+	}
+
+	return ""
 }

@@ -262,6 +262,14 @@ export function ChannelsActionDialog({ currentRow, duplicateFromRow, open, onOpe
   const [billingHeaderValue, setBillingHeaderValue] = useState<string>(
     initialRow?.settings?.billingHeaderValue ?? ''
   );
+  const [simulateCache, setSimulateCache] = useState<boolean>(
+    initialRow?.settings?.simulateCache ?? false
+  );
+  const [simulateCacheMode, setSimulateCacheMode] = useState<'ephemeral_5m_input_tokens' | 'ephemeral_1h_input_tokens'>(
+    initialRow?.settings?.simulateCacheMode === 'ephemeral_1h_input_tokens'
+      ? 'ephemeral_1h_input_tokens'
+      : 'ephemeral_5m_input_tokens'
+  );
 
   const defaultBillingHeaderValue = 'x-anthropic-billing-header: cc_version=2.1.50.b97; cc_entrypoint=cli; cch=00000;';
 
@@ -374,6 +382,16 @@ export function ChannelsActionDialog({ currentRow, duplicateFromRow, open, onOpe
       } else {
         setAuthMode('third-party');
       }
+
+      setDisguiseCliRequest(initialRow.settings?.disguiseCliRequest ?? false);
+      setUnifiedClientId(initialRow.settings?.unifiedClientId ?? '');
+      setBillingHeaderValue(initialRow.settings?.billingHeaderValue ?? '');
+      setSimulateCache(initialRow.settings?.simulateCache ?? false);
+      setSimulateCacheMode(
+        initialRow.settings?.simulateCacheMode === 'ephemeral_1h_input_tokens'
+          ? 'ephemeral_1h_input_tokens'
+          : 'ephemeral_5m_input_tokens'
+      );
     }
   }, [initialRow]);
 
@@ -880,13 +898,21 @@ export function ChannelsActionDialog({ currentRow, duplicateFromRow, open, onOpe
       }
 
       if (isEdit && currentRow) {
-        const disguiseSettings = isClaudeCodeType && disguiseCliRequest
+        const disguiseSettings = isClaudeCodeType
           ? {
-              disguiseCliRequest: true as const,
-              unifiedClientId: unifiedClientId || undefined,
-              billingHeaderValue: billingHeaderValue || undefined,
+              disguiseCliRequest: disguiseCliRequest ? (true as const) : undefined,
+              unifiedClientId: disguiseCliRequest ? (unifiedClientId || undefined) : undefined,
+              billingHeaderValue: disguiseCliRequest ? (billingHeaderValue || undefined) : undefined,
+              simulateCache: simulateCache,
+              simulateCacheMode: simulateCacheMode,
             }
-          : { disguiseCliRequest: undefined, unifiedClientId: undefined, billingHeaderValue: undefined };
+          : {
+              disguiseCliRequest: undefined,
+              unifiedClientId: undefined,
+              billingHeaderValue: undefined,
+              simulateCache: undefined,
+              simulateCacheMode: undefined,
+            };
 
         const updateInput = {
           ...dataWithModels,
@@ -926,15 +952,21 @@ export function ChannelsActionDialog({ currentRow, duplicateFromRow, open, onOpe
 
         const nextSettings = mergeChannelSettingsForUpdate(values.settings, {
           proxy: proxyConfig,
-          ...(isClaudeCodeType && disguiseCliRequest ? {
-            disguiseCliRequest: true,
-            unifiedClientId: unifiedClientId || undefined,
-            billingHeaderValue: billingHeaderValue || undefined,
-          } : {
-            disguiseCliRequest: undefined,
-            unifiedClientId: undefined,
-            billingHeaderValue: undefined,
-          }),
+          ...(isClaudeCodeType
+            ? {
+                disguiseCliRequest: disguiseCliRequest ? true : undefined,
+                unifiedClientId: disguiseCliRequest ? (unifiedClientId || undefined) : undefined,
+                billingHeaderValue: disguiseCliRequest ? (billingHeaderValue || undefined) : undefined,
+                simulateCache: simulateCache,
+                simulateCacheMode: simulateCacheMode,
+              }
+            : {
+                disguiseCliRequest: undefined,
+                unifiedClientId: undefined,
+                billingHeaderValue: undefined,
+                simulateCache: undefined,
+                simulateCacheMode: undefined,
+              }),
         });
 
         await createChannel.mutateAsync({
@@ -949,6 +981,8 @@ export function ChannelsActionDialog({ currentRow, duplicateFromRow, open, onOpe
       setDisguiseCliRequest(false);
       setUnifiedClientId('');
       setBillingHeaderValue('');
+      setSimulateCache(false);
+      setSimulateCacheMode('ephemeral_5m_input_tokens');
       onOpenChange(false);
     } catch (_error) {
       void _error;
@@ -1278,6 +1312,15 @@ export function ChannelsActionDialog({ currentRow, duplicateFromRow, open, onOpe
             setProxyUrl(initialRow?.settings?.proxy?.url || '');
             setProxyUsername(initialRow?.settings?.proxy?.username || '');
             setProxyPassword(initialRow?.settings?.proxy?.password || '');
+            setDisguiseCliRequest(initialRow?.settings?.disguiseCliRequest ?? false);
+            setUnifiedClientId(initialRow?.settings?.unifiedClientId ?? '');
+            setBillingHeaderValue(initialRow?.settings?.billingHeaderValue ?? '');
+            setSimulateCache(initialRow?.settings?.simulateCache ?? false);
+            setSimulateCacheMode(
+              initialRow?.settings?.simulateCacheMode === 'ephemeral_1h_input_tokens'
+                ? 'ephemeral_1h_input_tokens'
+                : 'ephemeral_5m_input_tokens'
+            );
             // Reset provider and API format state
             if (initialRow) {
               setSelectedProvider(getProviderFromChannelType(initialRow.type) || 'openai');
@@ -2090,6 +2133,47 @@ export function ChannelsActionDialog({ currentRow, duplicateFromRow, open, onOpe
                               </div>
                               </>
                             )}
+
+                            <div className='rounded-md border p-3 space-y-3'>
+                              <div className='flex items-center gap-2'>
+                                <Checkbox
+                                  checked={simulateCache}
+                                  onCheckedChange={(checked) => setSimulateCache(checked === true)}
+                                />
+                                <span className='text-xs font-medium'>
+                                  {t('channels.dialogs.fields.simulateCache.label')}
+                                </span>
+                              </div>
+                              <p className='text-muted-foreground text-xs'>
+                                {t('channels.dialogs.fields.simulateCache.description')}
+                              </p>
+
+                              {simulateCache && (
+                                <div className='space-y-2'>
+                                  <span className='text-xs font-medium'>
+                                    {t('channels.dialogs.fields.simulateCache.mode.label')}
+                                  </span>
+                                  <RadioGroup
+                                    value={simulateCacheMode}
+                                    onValueChange={(value) => setSimulateCacheMode(value as 'ephemeral_5m_input_tokens' | 'ephemeral_1h_input_tokens')}
+                                    className='space-y-2'
+                                  >
+                                    <div className='flex items-center space-x-2'>
+                                      <RadioGroupItem value='ephemeral_5m_input_tokens' id='simulate-cache-mode-5m' />
+                                      <label htmlFor='simulate-cache-mode-5m' className='text-xs'>
+                                        {t('channels.dialogs.fields.simulateCache.mode.ephemeral_5m_input_tokens')}
+                                      </label>
+                                    </div>
+                                    <div className='flex items-center space-x-2'>
+                                      <RadioGroupItem value='ephemeral_1h_input_tokens' id='simulate-cache-mode-1h' />
+                                      <label htmlFor='simulate-cache-mode-1h' className='text-xs'>
+                                        {t('channels.dialogs.fields.simulateCache.mode.ephemeral_1h_input_tokens')}
+                                      </label>
+                                    </div>
+                                  </RadioGroup>
+                                </div>
+                              )}
+                            </div>
                           </div>
                         </FormItem>
                       )}

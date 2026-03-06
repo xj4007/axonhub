@@ -576,5 +576,10 @@
   "channels.dialogs.fields.disguiseCliRequest.unifiedClientId.help": "64 位十六进制字符串，替换 user_id 中的客户端标识部分。留空则每次请求生成随机标识",
   "channels.dialogs.fields.disguiseCliRequest.billingHeader.label": "Billing Header",
   "channels.dialogs.fields.disguiseCliRequest.billingHeader.useDefault": "使用默认值",
-  "channels.dialogs.fields.disguiseCliRequest.billingHeader.help": "注入到系统提示词 system[0] 的 x-anthropic-billing-header 值。如已存在则替换，不存在则注入"
+  "channels.dialogs.fields.disguiseCliRequest.billingHeader.help": "注入到系统提示词 system[0] 的 x-anthropic-billing-header 值。如已存在则替换，不存在则注入",
+  "channels.dialogs.fields.simulateCache.label": "模拟缓存",
+  "channels.dialogs.fields.simulateCache.description": "仅对当前渠道启用 Claude Code 响应的 prompt cache usage 模拟",
+  "channels.dialogs.fields.simulateCache.mode.label": "缓存类型",
+  "channels.dialogs.fields.simulateCache.mode.ephemeral_5m_input_tokens": "ephemeral_5m_input_tokens",
+  "channels.dialogs.fields.simulateCache.mode.ephemeral_1h_input_tokens": "ephemeral_1h_input_tokens"
 }

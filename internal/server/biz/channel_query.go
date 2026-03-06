@@ -8,6 +8,12 @@ import (
 	"entgo.io/ent/dialect/sql/sqljson"
 
 	"github.com/looplj/axonhub/internal/ent"
+	"github.com/looplj/axonhub/internal/objects"
+)
+
+const (
+	simulateCacheModeEphemeral5M = "ephemeral_5m_input_tokens"
+	simulateCacheModeEphemeral1H = "ephemeral_1h_input_tokens"
 )
 
 // QueryChannelsInput represents the input for querying channels with additional filters.
@@ -46,9 +52,16 @@ func (svc *ChannelService) QueryChannels(ctx context.Context, input QueryChannel
 
 	// If the model is not specified, return the query result directly.
 	if input.Model == nil || *input.Model == "" {
-		return query.Paginate(ctx, input.After, input.First, input.Before, input.Last,
+		conn, err := query.Paginate(ctx, input.After, input.First, input.Before, input.Last,
 			ent.WithChannelOrder(input.OrderBy),
 		)
+		if err != nil {
+			return nil, err
+		}
+
+		normalizeChannelConnectionSettings(conn)
+
+		return conn, nil
 	}
 
 	// When model filtering is required, we fetch all results and filter in-memory, bypassing database pagination.
@@ -83,7 +96,10 @@ func (svc *ChannelService) queryChannelsWithModelFilter(
 	}
 
 	// Build connection without pagination (ignore all pagination params for model filtering)
-	return svc.buildConnectionInMemory(filteredChannels, input.OrderBy), nil
+	conn := svc.buildConnectionInMemory(filteredChannels, input.OrderBy)
+	normalizeChannelConnectionSettings(conn)
+
+	return conn, nil
 }
 
 // buildConnectionInMemory builds a relay-style connection from filtered channels.
@@ -118,4 +134,31 @@ func (svc *ChannelService) buildConnectionInMemory(
 	}
 
 	return conn
+}
+
+func normalizeChannelConnectionSettings(conn *ent.ChannelConnection) {
+	if conn == nil {
+		return
+	}
+
+	for _, edge := range conn.Edges {
+		if edge == nil || edge.Node == nil {
+			continue
+		}
+
+		normalizeChannelSettings(edge.Node.Settings)
+	}
+}
+
+func normalizeChannelSettings(settings *objects.ChannelSettings) {
+	if settings == nil {
+		return
+	}
+
+	switch settings.SimulateCacheMode {
+	case simulateCacheModeEphemeral5M, simulateCacheModeEphemeral1H:
+		return
+	default:
+		settings.SimulateCacheMode = simulateCacheModeEphemeral5M
+	}
 }

@@ -367,6 +367,74 @@ func TestChannelService_QueryChannels_WithoutModelFilter(t *testing.T) {
 	})
 }
 
+func TestChannelService_QueryChannels_NormalizesSimulateCacheMode(t *testing.T) {
+	svc, client := setupTestChannelService(t)
+	defer client.Close()
+
+	ctx := context.Background()
+	ctx = ent.NewContext(ctx, client)
+	ctx = authz.WithTestBypass(ctx)
+
+	createTestChannel(t, client, ctx, "mode-empty", []string{"gpt-4"}, &objects.ChannelSettings{
+		SimulateCacheMode: "",
+	})
+	createTestChannel(t, client, ctx, "mode-one-hour", []string{"gpt-4"}, &objects.ChannelSettings{
+		SimulateCacheMode: "ephemeral_1h_input_tokens",
+	})
+	createTestChannel(t, client, ctx, "mode-invalid", []string{"gpt-4"}, &objects.ChannelSettings{
+		SimulateCacheMode: "invalid_mode",
+	})
+
+	conn, err := svc.QueryChannels(ctx, QueryChannelsInput{})
+	require.NoError(t, err)
+
+	modeByName := lo.SliceToMap(conn.Edges, func(edge *ent.ChannelEdge) (string, string) {
+		mode := ""
+		if edge.Node.Settings != nil {
+			mode = edge.Node.Settings.SimulateCacheMode
+		}
+
+		return edge.Node.Name, mode
+	})
+
+	require.Equal(t, "ephemeral_5m_input_tokens", modeByName["mode-empty"])
+	require.Equal(t, "ephemeral_1h_input_tokens", modeByName["mode-one-hour"])
+	require.Equal(t, "ephemeral_5m_input_tokens", modeByName["mode-invalid"])
+}
+
+func TestChannelService_QueryChannels_WithModelFilterNormalizesSimulateCacheMode(t *testing.T) {
+	svc, client := setupTestChannelService(t)
+	defer client.Close()
+
+	ctx := context.Background()
+	ctx = ent.NewContext(ctx, client)
+	ctx = authz.WithTestBypass(ctx)
+
+	createTestChannel(t, client, ctx, "model-filter-empty", []string{"gpt-4"}, &objects.ChannelSettings{
+		SimulateCacheMode: "",
+	})
+	createTestChannel(t, client, ctx, "model-filter-one-hour", []string{"gpt-4"}, &objects.ChannelSettings{
+		SimulateCacheMode: "ephemeral_1h_input_tokens",
+	})
+
+	conn, err := svc.QueryChannels(ctx, QueryChannelsInput{
+		Model: lo.ToPtr("gpt-4"),
+	})
+	require.NoError(t, err)
+
+	modeByName := lo.SliceToMap(conn.Edges, func(edge *ent.ChannelEdge) (string, string) {
+		mode := ""
+		if edge.Node.Settings != nil {
+			mode = edge.Node.Settings.SimulateCacheMode
+		}
+
+		return edge.Node.Name, mode
+	})
+
+	require.Equal(t, "ephemeral_5m_input_tokens", modeByName["model-filter-empty"])
+	require.Equal(t, "ephemeral_1h_input_tokens", modeByName["model-filter-one-hour"])
+}
+
 // Helper function to create test channel.
 func createTestChannel(
 	t *testing.T,

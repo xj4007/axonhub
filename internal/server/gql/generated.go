@@ -435,6 +435,8 @@ type ComplexityRoot struct {
 		HideOriginalModels       func(childComplexity int) int
 		ModelMappings            func(childComplexity int) int
 		Proxy                    func(childComplexity int) int
+		SimulateCache            func(childComplexity int) int
+		SimulateCacheMode        func(childComplexity int) int
 		TransformOptions         func(childComplexity int) int
 		UnifiedClientId          func(childComplexity int) int
 	}
@@ -3161,6 +3163,18 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.ChannelSettings.Proxy(childComplexity), true
+	case "ChannelSettings.simulateCache":
+		if e.complexity.ChannelSettings.SimulateCache == nil {
+			break
+		}
+
+		return e.complexity.ChannelSettings.SimulateCache(childComplexity), true
+	case "ChannelSettings.simulateCacheMode":
+		if e.complexity.ChannelSettings.SimulateCacheMode == nil {
+			break
+		}
+
+		return e.complexity.ChannelSettings.SimulateCacheMode(childComplexity), true
 	case "ChannelSettings.transformOptions":
 		if e.complexity.ChannelSettings.TransformOptions == nil {
 			break
@@ -14189,6 +14203,10 @@ func (ec *executionContext) fieldContext_Channel_settings(_ context.Context, fie
 				return ec.fieldContext_ChannelSettings_unifiedClientId(ctx, field)
 			case "billingHeaderValue":
 				return ec.fieldContext_ChannelSettings_billingHeaderValue(ctx, field)
+			case "simulateCache":
+				return ec.fieldContext_ChannelSettings_simulateCache(ctx, field)
+			case "simulateCacheMode":
+				return ec.fieldContext_ChannelSettings_simulateCacheMode(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type ChannelSettings", field.Name)
 		},
@@ -18059,6 +18077,64 @@ func (ec *executionContext) _ChannelSettings_billingHeaderValue(ctx context.Cont
 }
 
 func (ec *executionContext) fieldContext_ChannelSettings_billingHeaderValue(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "ChannelSettings",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _ChannelSettings_simulateCache(ctx context.Context, field graphql.CollectedField, obj *objects.ChannelSettings) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_ChannelSettings_simulateCache,
+		func(ctx context.Context) (any, error) {
+			return obj.SimulateCache, nil
+		},
+		nil,
+		ec.marshalOBoolean2ᚖbool,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_ChannelSettings_simulateCache(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "ChannelSettings",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Boolean does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _ChannelSettings_simulateCacheMode(ctx context.Context, field graphql.CollectedField, obj *objects.ChannelSettings) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_ChannelSettings_simulateCacheMode,
+		func(ctx context.Context) (any, error) {
+			return obj.SimulateCacheMode, nil
+		},
+		nil,
+		ec.marshalOString2string,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_ChannelSettings_simulateCacheMode(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	fc = &graphql.FieldContext{
 		Object:     "ChannelSettings",
 		Field:      field,
@@ -49400,7 +49476,7 @@ func (ec *executionContext) unmarshalInputChannelSettingsInput(ctx context.Conte
 		asMap[k] = v
 	}
 
-	fieldsInOrder := [...]string{"extraModelPrefix", "modelMappings", "autoTrimedModelPrefixes", "hideOriginalModels", "hideMappedModels", "proxy", "transformOptions", "headerOverrideOperations", "bodyOverrideOperations", "disguiseCliRequest", "unifiedClientId", "billingHeaderValue"}
+	fieldsInOrder := [...]string{"extraModelPrefix", "modelMappings", "autoTrimedModelPrefixes", "hideOriginalModels", "hideMappedModels", "proxy", "transformOptions", "headerOverrideOperations", "bodyOverrideOperations", "disguiseCliRequest", "unifiedClientId", "billingHeaderValue", "simulateCache", "simulateCacheMode"}
 	for _, k := range fieldsInOrder {
 		v, ok := asMap[k]
 		if !ok {
@@ -49491,6 +49567,20 @@ func (ec *executionContext) unmarshalInputChannelSettingsInput(ctx context.Conte
 				return it, err
 			}
 			it.BillingHeaderValue = data
+		case "simulateCache":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("simulateCache"))
+			data, err := ec.unmarshalOBoolean2ᚖbool(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.SimulateCache = data
+		case "simulateCacheMode":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("simulateCacheMode"))
+			data, err := ec.unmarshalOString2string(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.SimulateCacheMode = data
 		}
 	}
 
@@ -70024,6 +70114,10 @@ func (ec *executionContext) _ChannelSettings(ctx context.Context, sel ast.Select
 			out.Values[i] = ec._ChannelSettings_unifiedClientId(ctx, field, obj)
 		case "billingHeaderValue":
 			out.Values[i] = ec._ChannelSettings_billingHeaderValue(ctx, field, obj)
+		case "simulateCache":
+			out.Values[i] = ec._ChannelSettings_simulateCache(ctx, field, obj)
+		case "simulateCacheMode":
+			out.Values[i] = ec._ChannelSettings_simulateCacheMode(ctx, field, obj)
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}

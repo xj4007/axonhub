@@ -142,6 +142,16 @@ type ChannelSettings struct {
 	// Example: "x-anthropic-billing-header: cc_version=2.1.50.b97; cc_entrypoint=cli; cch=00000;"
 	// Only effective when DisguiseCliRequest is true.
 	BillingHeaderValue string `json:"billingHeaderValue,omitempty"`
+
+	// SimulateCache controls whether Claude Code prompt cache usage simulation is enabled.
+	// nil/false = disabled; true = enabled.
+	// Only effective for claudecode channel type.
+	SimulateCache *bool `json:"simulateCache,omitempty"`
+
+	// SimulateCacheMode controls which prompt cache write field receives forged cache creation tokens.
+	// Allowed values: ephemeral_5m_input_tokens / ephemeral_1h_input_tokens.
+	// Only effective when SimulateCache is true.
+	SimulateCacheMode string `json:"simulateCacheMode,omitempty"`
 }
 
 // DisabledAPIKey 记录被禁用的 API key 信息（敏感，按 credentials 同级保护）

@@ -100,6 +100,8 @@ export function mergeChannelSettingsForUpdate(
     disguiseCliRequest: pick('disguiseCliRequest', existing?.disguiseCliRequest ?? undefined),
     unifiedClientId: pick('unifiedClientId', existing?.unifiedClientId ?? undefined),
     billingHeaderValue: pick('billingHeaderValue', existing?.billingHeaderValue ?? undefined),
+    simulateCache: pick('simulateCache', existing?.simulateCache ?? undefined),
+    simulateCacheMode: pick('simulateCacheMode', existing?.simulateCacheMode ?? undefined),
   };
 }
 

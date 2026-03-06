@@ -203,6 +203,18 @@ func (t *ClaudeCodeTransformer) TransformRequest(
 		httpReq.Metadata["strip_tool_prefix"] = "true"
 	}
 
+	// Merge llm request metadata into http request metadata so pipeline middlewares can read per-attempt flags
+	// (e.g. cc_simulate_cache_* injected by orchestrator). Preserve existing metadata fields set above.
+	if httpReq.Metadata == nil {
+		httpReq.Metadata = make(map[string]string)
+	}
+	for k, v := range reqCopy.Metadata {
+		if k == "" {
+			continue
+		}
+		httpReq.Metadata[k] = v
+	}
+
 	// Add/overwrite Claude Code specific headers
 	for _, header := range claudeCodeHeaders {
 		httpReq.Headers.Set(header[0], header[1])

@@ -56,6 +56,7 @@ func NewChatCompletionOrchestrator(
 		PromptProvider:  promptService,
 		Middlewares: []pipeline.Middleware{
 			cc.StripBillingHeaderCCH(),
+			cc.PromptCacheDisguise(),
 			stream.EnsureUsage(),
 		},
 		PipelineFactory:            pipeline.NewFactory(httpClient),

@@ -573,5 +573,10 @@
   "channels.dialogs.fields.disguiseCliRequest.unifiedClientId.help": "64-char hex string to replace the client identifier in user_id. Leave empty to generate a random identifier per request",
   "channels.dialogs.fields.disguiseCliRequest.billingHeader.label": "Billing Header",
   "channels.dialogs.fields.disguiseCliRequest.billingHeader.useDefault": "Use Default",
-  "channels.dialogs.fields.disguiseCliRequest.billingHeader.help": "The x-anthropic-billing-header value to inject as system[0]. Replaces existing billing header if present, otherwise injects as new element"
+  "channels.dialogs.fields.disguiseCliRequest.billingHeader.help": "The x-anthropic-billing-header value to inject as system[0]. Replaces existing billing header if present, otherwise injects as new element",
+  "channels.dialogs.fields.simulateCache.label": "Simulate Cache",
+  "channels.dialogs.fields.simulateCache.description": "Enable prompt cache usage simulation for Claude Code responses on this channel only",
+  "channels.dialogs.fields.simulateCache.mode.label": "Cache Type",
+  "channels.dialogs.fields.simulateCache.mode.ephemeral_5m_input_tokens": "ephemeral_5m_input_tokens",
+  "channels.dialogs.fields.simulateCache.mode.ephemeral_1h_input_tokens": "ephemeral_1h_input_tokens"
 }

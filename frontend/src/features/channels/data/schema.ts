@@ -154,6 +154,11 @@ export const channelSettingsSchema = z.object({
   disguiseCliRequest: z.boolean().optional().nullable(),
   unifiedClientId: z.string().optional().nullable(),
   billingHeaderValue: z.string().optional().nullable(),
+  simulateCache: z.boolean().optional().nullable(),
+  simulateCacheMode: z.preprocess(
+    (value) => (value === '' ? undefined : value),
+    z.enum(['ephemeral_5m_input_tokens', 'ephemeral_1h_input_tokens']).optional().nullable()
+  ),
 });
 export type ChannelSettings = z.infer<typeof channelSettingsSchema>;
 
