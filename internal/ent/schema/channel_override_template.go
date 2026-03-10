@@ -3,6 +3,7 @@ package schema
 import (
 	"entgo.io/contrib/entgql"
 	"entgo.io/ent"
+	"entgo.io/ent/dialect"
 	"entgo.io/ent/schema"
 	"entgo.io/ent/schema/edge"
 	"entgo.io/ent/schema/field"
@@ -50,7 +51,10 @@ func (ChannelOverrideTemplate) Fields() []ent.Field {
 			Optional().
 			Comment("Template description"),
 		field.String("override_parameters").
-			Default("{}").
+			SchemaType(map[string]string{
+				dialect.MySQL: "mediumtext",
+			}).
+			DefaultFunc(func() string { return "{}" }).
 			Deprecated("Use body_override_operations instead").
 			Annotations(
 				entgql.Skip(entgql.SkipMutationCreateInput, entgql.SkipMutationUpdateInput),

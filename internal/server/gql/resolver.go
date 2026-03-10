@@ -38,7 +38,12 @@ type Resolver struct {
 	backupService                  *backup.BackupService
 	channelProbeService            *biz.ChannelProbeService
 	promptService                  *biz.PromptService
+	agentService                   *biz.AgentService
+	agentHostService               *biz.AgentHostService
+	agentDeployService             *biz.AgentDeployService
+	agentBootstrapService          *biz.AgentBootstrapService
 	providerQuotaService           *biz.ProviderQuotaService
+	messageChannelService          *biz.MessageChannelService
 	httpClient                     *httpclient.HttpClient
 	modelFetcher                   *biz.ModelFetcher
 	TestChannelOrchestrator        *orchestrator.TestChannelOrchestrator
@@ -64,7 +69,12 @@ func NewSchema(
 	backupService *backup.BackupService,
 	channelProbeService *biz.ChannelProbeService,
 	promptService *biz.PromptService,
+	agentService *biz.AgentService,
+	agentHostService *biz.AgentHostService,
+	agentDeployService *biz.AgentDeployService,
+	agentBootstrapService *biz.AgentBootstrapService,
 	providerQuotaService *biz.ProviderQuotaService,
+	messageChannelService *biz.MessageChannelService,
 ) graphql.ExecutableSchema {
 	httpClient := httpclient.NewHttpClient()
 	modelFetcher := biz.NewModelFetcher(httpClient, channelService)
@@ -88,7 +98,12 @@ func NewSchema(
 			backupService:                  backupService,
 			channelProbeService:            channelProbeService,
 			promptService:                  promptService,
+			agentService:                   agentService,
+			agentHostService:               agentHostService,
+			agentDeployService:             agentDeployService,
+			agentBootstrapService:          agentBootstrapService,
 			providerQuotaService:           providerQuotaService,
+			messageChannelService:          messageChannelService,
 			httpClient:                     httpClient,
 			modelFetcher:                   modelFetcher,
 			TestChannelOrchestrator:        orchestrator.NewTestChannelOrchestrator(channelService, requestService, systemService, usageLogService, httpClient),

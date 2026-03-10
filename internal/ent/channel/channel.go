@@ -43,6 +43,8 @@ const (
 	FieldManualModels = "manual_models"
 	// FieldAutoSyncSupportedModels holds the string denoting the auto_sync_supported_models field in the database.
 	FieldAutoSyncSupportedModels = "auto_sync_supported_models"
+	// FieldAutoSyncModelPattern holds the string denoting the auto_sync_model_pattern field in the database.
+	FieldAutoSyncModelPattern = "auto_sync_model_pattern"
 	// FieldTags holds the string denoting the tags field in the database.
 	FieldTags = "tags"
 	// FieldDefaultTestModel holds the string denoting the default_test_model field in the database.
@@ -130,6 +132,7 @@ var Columns = []string{
 	FieldSupportedModels,
 	FieldManualModels,
 	FieldAutoSyncSupportedModels,
+	FieldAutoSyncModelPattern,
 	FieldTags,
 	FieldDefaultTestModel,
 	FieldPolicies,
@@ -172,6 +175,8 @@ var (
 	DefaultManualModels []string
 	// DefaultAutoSyncSupportedModels holds the default value on creation for the "auto_sync_supported_models" field.
 	DefaultAutoSyncSupportedModels bool
+	// DefaultAutoSyncModelPattern holds the default value on creation for the "auto_sync_model_pattern" field.
+	DefaultAutoSyncModelPattern string
 	// DefaultTags holds the default value on creation for the "tags" field.
 	DefaultTags []string
 	// DefaultPolicies holds the default value on creation for the "policies" field.
@@ -226,10 +231,14 @@ const (
 	TypeBailian           Type = "bailian"
 	TypeJina              Type = "jina"
 	TypeGithub            Type = "github"
+	TypeGithubCopilot     Type = "github_copilot"
 	TypeClaudecode        Type = "claudecode"
 	TypeCerebras          Type = "cerebras"
 	TypeAntigravity       Type = "antigravity"
 	TypeNanogpt           Type = "nanogpt"
+	TypeSearchTavily      Type = "search_tavily"
+	TypeSearchBrave       Type = "search_brave"
+	TypeSearchExa         Type = "search_exa"
 )
 
 func (_type Type) String() string {
@@ -239,7 +248,7 @@ func (_type Type) String() string {
 // TypeValidator is a validator for the "type" field enum values. It is called by the builders before save.
 func TypeValidator(_type Type) error {
 	switch _type {
-	case TypeOpenai, TypeOpenaiResponses, TypeCodex, TypeVercel, TypeAnthropic, TypeAnthropicAWS, TypeAnthropicGcp, TypeGeminiOpenai, TypeGemini, TypeGeminiVertex, TypeDeepseek, TypeDeepseekAnthropic, TypeDeepinfra, TypeDoubao, TypeDoubaoAnthropic, TypeMoonshot, TypeMoonshotAnthropic, TypeZhipu, TypeZai, TypeZhipuAnthropic, TypeZaiAnthropic, TypeAnthropicFake, TypeOpenaiFake, TypeOpenrouter, TypeXiaomi, TypeXai, TypePpio, TypeSiliconflow, TypeVolcengine, TypeLongcat, TypeLongcatAnthropic, TypeMinimax, TypeMinimaxAnthropic, TypeAihubmix, TypeBurncloud, TypeModelscope, TypeBailian, TypeJina, TypeGithub, TypeClaudecode, TypeCerebras, TypeAntigravity, TypeNanogpt:
+	case TypeOpenai, TypeOpenaiResponses, TypeCodex, TypeVercel, TypeAnthropic, TypeAnthropicAWS, TypeAnthropicGcp, TypeGeminiOpenai, TypeGemini, TypeGeminiVertex, TypeDeepseek, TypeDeepseekAnthropic, TypeDeepinfra, TypeDoubao, TypeDoubaoAnthropic, TypeMoonshot, TypeMoonshotAnthropic, TypeZhipu, TypeZai, TypeZhipuAnthropic, TypeZaiAnthropic, TypeAnthropicFake, TypeOpenaiFake, TypeOpenrouter, TypeXiaomi, TypeXai, TypePpio, TypeSiliconflow, TypeVolcengine, TypeLongcat, TypeLongcatAnthropic, TypeMinimax, TypeMinimaxAnthropic, TypeAihubmix, TypeBurncloud, TypeModelscope, TypeBailian, TypeJina, TypeGithub, TypeGithubCopilot, TypeClaudecode, TypeCerebras, TypeAntigravity, TypeNanogpt, TypeSearchTavily, TypeSearchBrave, TypeSearchExa:
 		return nil
 	default:
 		return fmt.Errorf("channel: invalid enum value for type field: %q", _type)
@@ -319,6 +328,11 @@ func ByStatus(opts ...sql.OrderTermOption) OrderOption {
 // ByAutoSyncSupportedModels orders the results by the auto_sync_supported_models field.
 func ByAutoSyncSupportedModels(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldAutoSyncSupportedModels, opts...).ToFunc()
+}
+
+// ByAutoSyncModelPattern orders the results by the auto_sync_model_pattern field.
+func ByAutoSyncModelPattern(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldAutoSyncModelPattern, opts...).ToFunc()
 }
 
 // ByDefaultTestModel orders the results by the default_test_model field.

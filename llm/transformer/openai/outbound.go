@@ -23,10 +23,8 @@ type PlatformType string
 
 const (
 	PlatformOpenAI PlatformType = "openai"
-	PlatformAzure  PlatformType = "azure"
+	PlatformGoogle PlatformType = "google"
 )
-
-const DefaultAzureAPIVersion = "2025-04-01-preview"
 
 // Config holds all configuration for the OpenAI outbound transformer.
 type Config struct {
@@ -42,9 +40,6 @@ type Config struct {
 
 	// APIKeyProvider provides API keys for authentication, required.
 	APIKeyProvider auth.APIKeyProvider `json:"-"`
-
-	// APIVersion is the API version for Azure platform, required for Azure.
-	APIVersion string `json:"api_version,omitempty"`
 }
 
 // OutboundTransformer implements transformer.Outbound for OpenAI format.
@@ -79,12 +74,7 @@ func NewOutboundTransformerWithConfig(config *Config) (transformer.Outbound, err
 		config.RawURL = true
 		config.BaseURL = strings.TrimSuffix(config.BaseURL, "##")
 	} else if !config.RawURL {
-		// For Azure, don't normalize with version - it has special URL format
-		if config.PlatformType == PlatformAzure {
-			config.BaseURL = transformer.NormalizeBaseURL(config.BaseURL, "")
-		} else {
-			config.BaseURL = transformer.NormalizeBaseURL(config.BaseURL, "v1")
-		}
+		config.BaseURL = transformer.NormalizeBaseURL(config.BaseURL, "v1")
 	}
 
 	return &OutboundTransformer{
@@ -108,17 +98,11 @@ func validateConfig(config *Config) error {
 	}
 
 	switch config.PlatformType {
-	case PlatformOpenAI:
+	case PlatformOpenAI, PlatformGoogle:
 		return nil
-	case PlatformAzure:
-		if config.APIVersion == "" {
-			return fmt.Errorf("API version is required for Azure platform")
-		}
 	default:
 		return fmt.Errorf("unsupported platform type: %v", config.PlatformType)
 	}
-
-	return nil
 }
 
 func (t *OutboundTransformer) APIFormat() llm.APIFormat {
@@ -141,15 +125,9 @@ func (t *OutboundTransformer) TransformRequest(ctx context.Context, llmReq *llm.
 	case llm.RequestTypeEmbedding:
 		return t.transformEmbeddingRequest(ctx, llmReq)
 	case llm.RequestTypeImage:
-		//nolint:exhaustive // Checked.
-		switch t.config.PlatformType {
-		case PlatformAzure:
-			return nil, fmt.Errorf("image generation via Image Generation API is not yet supported for Azure platform")
-		default:
-			// ok
-		}
-
 		return t.buildImageGenerationAPIRequest(ctx, llmReq)
+	case llm.RequestTypeVideo:
+		return t.buildVideoGenerationAPIRequest(ctx, llmReq)
 	case llm.RequestTypeRerank:
 		return nil, fmt.Errorf("%w: rerank is not supported", transformer.ErrInvalidRequest)
 	}
@@ -160,6 +138,11 @@ func (t *OutboundTransformer) TransformRequest(ctx context.Context, llmReq *llm.
 
 	// Convert to OpenAI Request format (this strips helper fields)
 	oaiReq := RequestFromLLM(llmReq)
+	//nolint:exhaustive // Checked.
+	switch t.config.PlatformType {
+	case PlatformOpenAI:
+		stripUnsupportedToolCallExtraContent(oaiReq)
+	}
 
 	body, err := json.Marshal(oaiReq)
 	if err != nil {
@@ -174,21 +157,9 @@ func (t *OutboundTransformer) TransformRequest(ctx context.Context, llmReq *llm.
 	headers.Set("Content-Type", "application/json")
 	headers.Set("Accept", "application/json")
 
-	var authConfig *httpclient.AuthConfig
-
-	//nolint:exhaustive // Chcked.
-	switch t.config.PlatformType {
-	case PlatformAzure:
-		authConfig = &httpclient.AuthConfig{
-			Type:      "api_key",
-			APIKey:    apiKey,
-			HeaderKey: "Api-Key",
-		}
-	default:
-		authConfig = &httpclient.AuthConfig{
-			Type:   "bearer",
-			APIKey: apiKey,
-		}
+	authConfig := &httpclient.AuthConfig{
+		Type:   "bearer",
+		APIKey: apiKey,
 	}
 
 	// Build platform-specific URL
@@ -234,6 +205,8 @@ func (t *OutboundTransformer) TransformResponse(
 			return transformImageGenerationResponse(httpResp)
 		case string(llm.APIFormatOpenAIEmbedding):
 			return t.transformEmbeddingResponse(ctx, httpResp)
+		case string(llm.APIFormatOpenAIVideo):
+			return transformVideoResponse(httpResp)
 		}
 	}
 
@@ -282,29 +255,11 @@ func (t *OutboundTransformer) TransformStreamChunk(
 
 // buildFullRequestURL constructs the appropriate URL based on the platform.
 func (t *OutboundTransformer) buildFullRequestURL(_ *llm.Request) (string, error) {
-	//nolint:exhaustive // Checked.
-	switch t.config.PlatformType {
-	case PlatformAzure:
-		if strings.HasSuffix(t.config.BaseURL, "/openai/v1") {
-			// Azure URL already includes /openai/v1
-			return fmt.Sprintf("%s/chat/completions?api-version=%s",
-				t.config.BaseURL, t.config.APIVersion), nil
-		}
-
-		if strings.HasSuffix(t.config.BaseURL, "/openai") {
-			// Azure URL includes /openai but not /v1
-			return fmt.Sprintf("%s/v1/chat/completions?api-version=%s",
-				t.config.BaseURL, t.config.APIVersion), nil
-		}
-		// Default case for other Azure URLs
-		return fmt.Sprintf("%s/openai/v1/chat/completions?api-version=%s",
-			t.config.BaseURL, t.config.APIVersion), nil
-	default:
-		if t.config.RawURL {
-			return t.config.BaseURL, nil
-		}
-		return t.config.BaseURL + "/chat/completions", nil
+	if t.config.RawURL {
+		return t.config.BaseURL, nil
 	}
+
+	return t.config.BaseURL + "/chat/completions", nil
 }
 
 // SetAPIKey updates the API key.

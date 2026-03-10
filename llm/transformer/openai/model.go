@@ -338,12 +338,26 @@ type FunctionCall struct {
 	Arguments string `json:"arguments"`
 }
 
+// ToolCallExtraContent represents provider-specific extension fields for tool calls.
+type ToolCallExtraContent struct {
+	Google *ToolCallGoogleExtraContent `json:"google,omitempty"`
+}
+
+// ToolCallExtraFields represents wrapped extension fields used by some providers.
+type ToolCallExtraFields struct {
+	ExtraContent *ToolCallExtraContent `json:"extra_content,omitempty"`
+}
+
 // ToolCall represents a tool call in the response.
 type ToolCall struct {
 	ID       string       `json:"id,omitempty"`
 	Type     string       `json:"type,omitempty"`
 	Function FunctionCall `json:"function"`
 	Index    int          `json:"index"`
+	// ExtraContent carries provider-specific extension fields, such as Gemini OpenAI thought signature.
+	ExtraContent *ToolCallExtraContent `json:"extra_content,omitempty"`
+	// ExtraFields is a compatibility wrapper for payloads that nest extra_content under extra_fields.
+	ExtraFields *ToolCallExtraFields `json:"extra_fields,omitempty"`
 }
 
 // ToolFunction represents a tool function reference.

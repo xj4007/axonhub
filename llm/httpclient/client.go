@@ -44,6 +44,11 @@ func NewHttpClientWithProxy(proxyConfig *ProxyConfig) *HttpClient {
 	}
 }
 
+// GetNativeClient returns the underlying *http.Client for advanced use cases.
+func (hc *HttpClient) GetNativeClient() *http.Client {
+	return hc.client
+}
+
 // getProxyFunc returns a proxy function based on the proxy configuration.
 func getProxyFunc(config *ProxyConfig) func(*http.Request) (*url.URL, error) {
 	// Handle nil config (backward compatibility) - default to environment
@@ -271,6 +276,11 @@ func BuildHttpRequest(
 
 	for k := range libManagedHeaders {
 		httpReq.Header.Del(k)
+	}
+
+	// Set Content-Type header if specified in request
+	if request.ContentType != "" {
+		httpReq.Header.Set("Content-Type", request.ContentType)
 	}
 
 	if request.Auth != nil {

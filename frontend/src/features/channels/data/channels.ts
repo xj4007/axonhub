@@ -74,6 +74,7 @@ const CREATE_CHANNEL_MUTATION = `
       }
       supportedModels
       autoSyncSupportedModels
+      autoSyncModelPattern
       manualModels
       tags
       defaultTestModel
@@ -124,6 +125,7 @@ const BULK_CREATE_CHANNELS_MUTATION = `
       }
       supportedModels
       autoSyncSupportedModels
+      autoSyncModelPattern
       manualModels
       tags
       defaultTestModel
@@ -169,6 +171,7 @@ const UPDATE_CHANNEL_MUTATION = `
       }
       supportedModels
       autoSyncSupportedModels
+      autoSyncModelPattern
       manualModels
       tags
       defaultTestModel
@@ -270,8 +273,9 @@ const BULK_IMPORT_CHANNELS_MUTATION = `
         baseURL
         name
         status
-        supportedModels
+          supportedModels
         autoSyncSupportedModels
+        autoSyncModelPattern
         manualModels
         tags
         defaultTestModel
@@ -546,6 +550,7 @@ const QUERY_CHANNELS_QUERY = `
           }
           supportedModels
           autoSyncSupportedModels
+          autoSyncModelPattern
           manualModels
           tags
           defaultTestModel
@@ -784,25 +789,6 @@ export interface BulkCreateChannelsInput {
   policies?: ChannelPolicies;
   orderingWeight?: number;
   remark?: string;
-}
-
-export function useBulkCreateChannels() {
-  const queryClient = useQueryClient();
-  const { t } = useTranslation();
-
-  return useMutation({
-    mutationFn: async (input: BulkCreateChannelsInput) => {
-      const data = await graphqlRequest<{ bulkCreateChannels: Channel[] }>(BULK_CREATE_CHANNELS_MUTATION, { input });
-      return data.bulkCreateChannels.map((ch) => channelSchema.parse(ch));
-    },
-    onSuccess: (channels) => {
-      queryClient.invalidateQueries({ queryKey: ['channels'] });
-      toast.success(t('channels.messages.batchCreateSuccess', { count: channels.length }));
-    },
-    onError: (error) => {
-      toast.error(t('channels.messages.batchCreateError', { error: error.message }));
-    },
-  });
 }
 
 export function useUpdateChannel() {
@@ -1094,6 +1080,39 @@ export function useBulkUpdateChannelOrdering() {
   });
 }
 
+const SYNC_CHANNEL_MODELS_MUTATION = `
+  mutation SyncChannelModels($channelID: ID!, $pattern: String) {
+    syncChannelModels(channelID: $channelID, pattern: $pattern) {
+      channelID
+      supportedModels
+    }
+  }
+`;
+
+const syncChannelModelsPayloadSchema = z.object({
+  channelID: z.string(),
+  supportedModels: z.array(z.string()),
+});
+
+export function useSyncChannelModels() {
+  const queryClient = useQueryClient();
+  const { t } = useTranslation();
+
+  return useMutation({
+    mutationFn: async (input: { channelID: string; pattern?: string }) => {
+      const data = await graphqlRequest<{ syncChannelModels: unknown }>(SYNC_CHANNEL_MODELS_MUTATION, input);
+      return syncChannelModelsPayloadSchema.parse(data.syncChannelModels);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['channels'] });
+      toast.success(t('channels.messages.syncModelsSuccess'));
+    },
+    onError: (error) => {
+      toast.error(t('channels.messages.syncModelsError', { error: error.message }));
+    },
+  });
+}
+
 export function useFetchModels() {
   const { t } = useTranslation();
 
@@ -1320,10 +1339,10 @@ export function useEnableSelectedChannelAPIKeys() {
 
   return useMutation({
     mutationFn: async ({ channelID, keys }: { channelID: string; keys: string[] }) => {
-      const data = await graphqlRequest<{ enableSelectedChannelAPIKeys: boolean }>(
-        ENABLE_SELECTED_CHANNEL_API_KEYS_MUTATION,
-        { channelID, keys }
-      );
+      const data = await graphqlRequest<{ enableSelectedChannelAPIKeys: boolean }>(ENABLE_SELECTED_CHANNEL_API_KEYS_MUTATION, {
+        channelID,
+        keys,
+      });
       return data.enableSelectedChannelAPIKeys;
     },
     onSuccess: (_data, variables) => {
@@ -1352,7 +1371,7 @@ export function useDeleteDisabledChannelAPIKeys() {
     onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['channelDisabledAPIKeys', variables.channelID] });
       queryClient.invalidateQueries({ queryKey: ['channels'] });
-      
+
       // Show appropriate message based on the result
       if (data.message === 'ONE_KEY_PRESERVED') {
         toast.success(t('channels.messages.deleteDisabledAPIKeysPreserved'));

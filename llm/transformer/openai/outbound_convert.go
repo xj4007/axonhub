@@ -4,6 +4,7 @@ import (
 	"github.com/samber/lo"
 
 	"github.com/looplj/axonhub/llm"
+	"github.com/looplj/axonhub/llm/transformer/shared"
 )
 
 // RequestFromLLM creates OpenAI Request from unified llm.Request.
@@ -57,9 +58,11 @@ func RequestFromLLM(r *llm.Request) *Request {
 		}
 	}
 
-	// Convert Tools
-	req.Tools = lo.Map(r.Tools, func(t llm.Tool, _ int) Tool {
-		return ToolFromLLM(t)
+	// Convert Tools – only include function tools; other types
+	// (image_generation, responses_custom_tool, etc.) are not supported
+	// by the Chat Completions API and must be filtered out.
+	req.Tools = lo.FilterMap(r.Tools, func(t llm.Tool, _ int) (Tool, bool) {
+		return ToolFromLLM(t), t.Type == llm.ToolTypeFunction
 	})
 
 	// Convert ToolChoice
@@ -94,12 +97,19 @@ func RequestFromLLM(r *llm.Request) *Request {
 
 // MessageFromLLM creates OpenAI Message from unified llm.Message.
 func MessageFromLLM(m llm.Message) Message {
+	// OpenAI Chat Completions has no notion of provider-specific reasoning signatures.
+	// If we detect a foreign signature (Gemini/Anthropic), drop reasoning_content to avoid upstream validation errors.
+	reasoningContent := m.ReasoningContent
+	if m.ReasoningSignature != nil && *m.ReasoningSignature != "" && !shared.IsOpenAIEncryptedContent(m.ReasoningSignature) {
+		reasoningContent = nil
+	}
+
 	msg := Message{
 		Role:             m.Role,
 		Name:             m.Name,
 		Refusal:          m.Refusal,
 		ToolCallID:       m.ToolCallID,
-		ReasoningContent: m.ReasoningContent,
+		ReasoningContent: reasoningContent,
 	}
 
 	// Convert Content
@@ -192,7 +202,7 @@ func ToolFromLLM(t llm.Tool) Tool {
 
 // ToolCallFromLLM creates OpenAI ToolCall from unified llm.ToolCall.
 func ToolCallFromLLM(tc llm.ToolCall) ToolCall {
-	return ToolCall{
+	toolCall := ToolCall{
 		ID:   tc.ID,
 		Type: tc.Type,
 		Function: FunctionCall{
@@ -201,6 +211,16 @@ func ToolCallFromLLM(tc llm.ToolCall) ToolCall {
 		},
 		Index: tc.Index,
 	}
+
+	if raw, ok := tc.TransformerMetadata[TransformerMetadataKeyGoogleThoughtSignature].(string); ok && raw != "" {
+		toolCall.ExtraContent = &ToolCallExtraContent{
+			Google: &ToolCallGoogleExtraContent{
+				ThoughtSignature: raw,
+			},
+		}
+	}
+
+	return toolCall
 }
 
 // ToLLMResponse converts OpenAI Response to unified llm.Response.

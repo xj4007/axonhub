@@ -215,6 +215,11 @@ type Request struct {
 	// Image is the image request, will be set if the request is image request.
 	Image *ImageRequest `json:"image,omitempty"`
 
+	// Video is the video request, will be set if the request is video request.
+	Video *VideoRequest `json:"video,omitempty"`
+	// Search is the web search request, will be set if the request is search request.
+	Search *SearchRequest `json:"search,omitempty"`
+
 	// RawRequest is the raw request from the client.
 	RawRequest *httpclient.Request `json:"raw_request,omitempty"`
 
@@ -480,9 +485,8 @@ type Response struct {
 	// Model is the model used to generate the response.
 	Model string `json:"model"`
 
-	// An optional field that will only be present when you set stream_options: {"include_usage": true} in your request.
-	// When present, it contains a null value except for the last chunk which contains the token usage statistics
-	// for the entire request.
+	// Usage is the unified token usage field for all request types (chat, embedding, rerank, image, video).
+	// For streaming chat requests, it will only be present in the last chunk when stream_options: {"include_usage": true} is set.
 	Usage *Usage `json:"usage,omitempty"`
 
 	// This fingerprint represents the backend configuration that the model runs with.
@@ -506,6 +510,11 @@ type Response struct {
 
 	// Image is the image response, will present if the request is image request.
 	Image *ImageResponse `json:"image,omitempty"`
+
+	// Video is the video response, will present if the request is video request.
+	Video *VideoResponse `json:"video,omitempty"`
+	// Search is the web search response, will present if the request is search request.
+	Search *SearchResponse `json:"search,omitempty"`
 
 	// RequestType is the outbound request type from the llm service.
 	// e.g. the request from the chat/completions endpoint is in the chat type.
@@ -572,6 +581,10 @@ type ResponseMeta struct {
 
 // Usage Represents the total token usage per request to OpenAI.
 type Usage struct {
+	// Some models charge based on credits instead of tokens.
+	// We use Quantity to represent the credits used.
+	Quantity int64 `json:"quantity,omitempty"`
+
 	// Number of tokens in the prompt, including cached tokens.
 	PromptTokens int64 `json:"prompt_tokens"`
 
@@ -634,6 +647,12 @@ type PromptTokensDetails struct {
 
 	// WriteCached1HourTokens is the number of tokens cached write for 1 hour ttl, for the anthropic.
 	WriteCached1HourTokens int64 `json:"write_cached_1hour_tokens,omitempty"`
+
+	// ImageTokens is the number of image tokens in the input (for image generation).
+	ImageTokens int64 `json:"image_tokens,omitempty"`
+
+	// TextTokens is the number of text tokens in the input (for image generation).
+	TextTokens int64 `json:"text_tokens,omitempty"`
 }
 
 // ResponseError represents an error response.

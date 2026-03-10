@@ -359,7 +359,10 @@ func convertGeminiContentToLLMMessage(content *Content, previousContents []*Cont
 			}
 
 		case part.FunctionCall != nil:
-			argsJSON, _ := json.Marshal(part.FunctionCall.Args)
+			argsJSON := []byte("{}")
+			if part.FunctionCall.Args != nil {
+				argsJSON, _ = json.Marshal(part.FunctionCall.Args)
+			}
 			tc := llm.ToolCall{
 				ID:   part.FunctionCall.ID,
 				Type: "function",
@@ -368,7 +371,7 @@ func convertGeminiContentToLLMMessage(content *Content, previousContents []*Cont
 					Arguments: string(argsJSON),
 				},
 			}
-
+			setInboundToolCallThoughtSignature(&tc, part.ThoughtSignature)
 			toolCalls = append(toolCalls, tc)
 
 		case part.FunctionResponse != nil:
@@ -526,6 +529,8 @@ func convertLLMChoiceToGeminiCandidate(choice *llm.Choice, isStream bool) *Candi
 			}
 		}
 
+		hasToolCallThoughtSignature := false
+
 		for _, toolCall := range msg.ToolCalls {
 			var args map[string]any
 			if toolCall.Function.Arguments != "" {
@@ -539,6 +544,10 @@ func convertLLMChoiceToGeminiCandidate(choice *llm.Choice, isStream bool) *Candi
 					Args: args,
 				},
 			}
+			if signature := getInboundGeminiToolCallThoughtSignature(toolCall); signature != nil {
+				part.ThoughtSignature = *signature
+				hasToolCallThoughtSignature = true
+			}
 
 			parts = append(parts, part)
 
@@ -548,16 +557,11 @@ func convertLLMChoiceToGeminiCandidate(choice *llm.Choice, isStream bool) *Candi
 			}
 		}
 
-		msgThoughtSignature := msg.ReasoningSignature
-		if len(msg.ToolCalls) > 0 && msgThoughtSignature == nil {
-			msgThoughtSignature = lo.ToPtr("context_engineering_is_the_way_to_go")
-		}
-
-		if msgThoughtSignature != nil && lastPart != nil {
+		if !hasToolCallThoughtSignature && msg.ReasoningSignature != nil {
 			if firstFunctionCallPart != nil {
-				firstFunctionCallPart.ThoughtSignature = *msgThoughtSignature
+				firstFunctionCallPart.ThoughtSignature = *msg.ReasoningSignature
 			} else {
-				lastPart.ThoughtSignature = *msgThoughtSignature
+				lastPart.ThoughtSignature = *msg.ReasoningSignature
 			}
 		}
 

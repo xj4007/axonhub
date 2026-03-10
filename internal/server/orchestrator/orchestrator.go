@@ -80,7 +80,7 @@ type ChatCompletionOrchestrator struct {
 	UsageLogService *biz.UsageLogService
 	QuotaService    *biz.QuotaService
 	PromptProvider  PromptProvider
-	Middlewares     []pipeline.Middleware
+	Middlewares []pipeline.Middleware
 	PipelineFactory *pipeline.Factory
 	ModelMapper     *ModelMapper
 
@@ -196,14 +196,21 @@ func (processor *ChatCompletionOrchestrator) Process(ctx context.Context, reques
 	inbound, outbound := NewPersistentTransformers(state, processor.Inbound)
 
 	// Add inbound middlewares (executed after inbound.TransformRequest)
-	middlewares = append(middlewares,
-		enforceQuota(inbound, processor.QuotaService),
-		checkApiKeyModelAccess(inbound),
-		applyModelMapping(inbound),
-		selectCandidates(inbound),
-		injectPrompts(inbound),
-		persistRequest(inbound),
-	)
+	if processor.Inbound.APIFormat().IsSearch() {
+		middlewares = append(middlewares,
+			selectSearchCandidates(inbound),
+			persistRequest(inbound),
+		)
+	} else {
+		middlewares = append(middlewares,
+			enforceQuota(inbound, processor.QuotaService),
+			checkApiKeyModelAccess(inbound),
+			applyModelMapping(inbound),
+			selectCandidates(inbound),
+			injectPrompts(inbound),
+			persistRequest(inbound),
+		)
+	}
 
 	// Add outbound middlewares (executed after outbound.TransformRequest)
 	middlewares = append(middlewares,

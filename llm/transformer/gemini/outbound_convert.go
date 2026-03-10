@@ -2,6 +2,7 @@ package gemini
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"time"
 
@@ -324,11 +325,17 @@ func convertLLMMessageToGeminiContent(msg *llm.Message) *Content {
 		lastPart              *Part
 	)
 
-	// Add reasoning content (thinking) first if present
+	// Add reasoning content (thinking) first if present.
+	// If the reasoning signature is from another provider (OpenAI/Anthropic),
+	// drop thinking content to avoid invalid signature/thinking pairing.
+	reasoningContent := msg.ReasoningContent
+	// if msg.ReasoningSignature != nil && *msg.ReasoningSignature != "" && !shared.IsGeminiThoughtSignature(msg.ReasoningSignature) {
+	// 	reasoningContent = nil
+	// }
 
-	if msg.ReasoningContent != nil && *msg.ReasoningContent != "" {
+	if reasoningContent != nil && *reasoningContent != "" {
 		p := &Part{
-			Text:    *msg.ReasoningContent,
+			Text:    *reasoningContent,
 			Thought: true,
 		}
 		parts = append(parts, p)
@@ -382,6 +389,8 @@ func convertLLMMessageToGeminiContent(msg *llm.Message) *Content {
 	//         Gemini 3 Pro will have the signature on the last part if the model generates a thought.
 	//         Gemini 2.5 won't have a signature in any part.
 
+	hasToolCallThoughtSignature := false
+
 	// Add tool calls
 	for _, toolCall := range msg.ToolCalls {
 		var args map[string]any
@@ -396,6 +405,10 @@ func convertLLMMessageToGeminiContent(msg *llm.Message) *Content {
 				Args: args,
 			},
 		}
+		if signature := getOutbountGeminiToolCallThoughtSignature(toolCall); signature != nil {
+			part.ThoughtSignature = *signature
+			hasToolCallThoughtSignature = true
+		}
 
 		parts = append(parts, part)
 
@@ -405,21 +418,23 @@ func convertLLMMessageToGeminiContent(msg *llm.Message) *Content {
 		}
 	}
 
-	// https://ai.google.dev/gemini-api/docs/gemini-3#migrating_from_other_models
-	// If there are tool calls but no thought signature, use a default one.
-	// This field is not compatible with OpenAI sdk, so we use the default value.
-	// We try the best to support this fields to keep this fields in the chat conversions, so we use the ReasoningSignature to hold the field,
-	// And this field will be preserved during claude code trace, will not degrade the gemini model performance.
-	msgThoughtSignature := shared.DecodeGeminiThoughtSignature(msg.ReasoningSignature)
-	if len(msg.ToolCalls) > 0 && msgThoughtSignature == nil {
-		msgThoughtSignature = lo.ToPtr("context_engineering_is_the_way_to_go")
-	}
+	if !hasToolCallThoughtSignature {
+		// https://ai.google.dev/gemini-api/docs/gemini-3#migrating_from_other_models
+		// If there are tool calls but no thought signature, use a default one.
+		// This field is not compatible with OpenAI sdk, so we use the default value.
+		// We try the best to support this fields to keep this fields in the chat conversions, so we use the ReasoningSignature to hold the field,
+		// And this field will be preserved during claude code trace, will not degrade the gemini model performance.
+		msgThoughtSignature := shared.DecodeGeminiThoughtSignature(msg.ReasoningSignature)
 
-	if msgThoughtSignature != nil && lastPart != nil {
-		if firstFunctionCallPart != nil {
-			firstFunctionCallPart.ThoughtSignature = *msgThoughtSignature
-		} else {
-			lastPart.ThoughtSignature = *msgThoughtSignature
+		if (len(msg.ToolCalls) > 0 || msg.ReasoningContent != nil) && msgThoughtSignature == nil {
+			msgThoughtSignature = lo.ToPtr(ContextEngineeringThoughtSignature)
+		}
+		if msgThoughtSignature != nil && (firstFunctionCallPart != nil || lastPart != nil) {
+			if firstFunctionCallPart != nil {
+				firstFunctionCallPart.ThoughtSignature = *msgThoughtSignature
+			} else {
+				lastPart.ThoughtSignature = *msgThoughtSignature
+			}
 		}
 	}
 
@@ -625,9 +640,10 @@ func convertGeminiCandidateToLLMChoiceWithState(candidate *Candidate, isStream b
 				}
 				// Gemini may response empty tool call ID.
 				if tc.ID == "" {
-					tc.ID = uuid.NewString()
+					tc.ID = fmt.Sprintf("tc_%s", uuid.NewString())
 				}
 
+				setOutboundToolCallThoughtSignature(&tc, part.ThoughtSignature)
 				toolCalls = append(toolCalls, tc)
 				nextToolCallIndex++
 			}

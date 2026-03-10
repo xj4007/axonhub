@@ -83,15 +83,16 @@ var libManagedHeaders = map[string]bool{
 }
 
 var blockedHeaders = map[string]bool{
-	"Content-Type":      true,
-	"Connection":        true,
-	"X-Channel-Id":      true,
-	"X-Project-Id":      true,
-	"X-Real-Ip":         true,
-	"X-Forwarded-For":   true,
-	"X-Forwarded-Proto": true,
-	"X-Forwarded-Host":  true,
-	"X-Forwarded-Port":  true,
+	"Content-Type":        true,
+	"Connection":          true,
+	"X-Channel-Id":        true,
+	"X-Project-Id":        true,
+	"X-Real-Ip":           true,
+	"X-Forwarded-For":     true,
+	"X-Forwarded-Proto":   true,
+	"X-Forwarded-Host":    true,
+	"X-Forwarded-Port":    true,
+	"X-Forwarded-Server":  true,
 
 	// Browser-only / hop-by-hop-ish headers that should not be forwarded to upstream.
 	"Accept-Language":    true,
@@ -112,18 +113,41 @@ var blockedHeaders = map[string]bool{
 	"Ah-Thread-Id": true,
 }
 
+// blockedHeaderPrefixes lists header prefixes that should not be forwarded to upstream.
+// For example, Cloudflare adds Cf-* and Cdn-* headers that can cause upstream providers to reject requests.
+var blockedHeaderPrefixes = []string{
+	"Cf-",
+	"Cdn-",
+}
+
+// isBlockedHeader checks whether a header (in canonical form) should be blocked from forwarding.
+func isBlockedHeader(key string) bool {
+	if blockedHeaders[key] {
+		return true
+	}
+
+	for _, prefix := range blockedHeaderPrefixes {
+		if strings.HasPrefix(key, prefix) {
+			return true
+		}
+	}
+
+	return false
+}
+
 var sensitiveHeaders = map[string]bool{
-	"Authorization":       true,
-	"Api-Key":             true,
-	"X-Api-Key":           true,
-	"X-Api-Secret":        true,
-	"X-Api-Token":         true,
-	"X-Goog-Api-Key":      true,
-	"X-Google-Api-Key":    true,
-	"Cookie":              true,
-	"Set-Cookie":          true,
-	"Proxy-Authorization": true,
-	"Www-Authenticate":    true,
+	"Authorization":        true,
+	"Api-Key":              true,
+	"X-Api-Key":            true,
+	"X-Api-Secret":         true,
+	"X-Api-Token":          true,
+	"X-Goog-Api-Key":       true,
+	"X-Google-Api-Key":     true,
+	"Cookie":               true,
+	"Set-Cookie":           true,
+	"Proxy-Authorization":  true,
+	"Www-Authenticate":     true,
+	"X-Subscription-Token": true,
 }
 
 var mergeWithAppendHeaders = map[string]bool{}
@@ -208,7 +232,7 @@ func FinalizeAuthHeaders(req *Request) (*Request, error) {
 // Blocked, sensitive, and library-managed headers are not merged.
 func MergeHTTPHeaders(dest, src http.Header) http.Header {
 	for k, v := range src {
-		if sensitiveHeaders[k] || libManagedHeaders[k] || blockedHeaders[k] {
+		if sensitiveHeaders[k] || libManagedHeaders[k] || isBlockedHeader(k) {
 			continue
 		}
 

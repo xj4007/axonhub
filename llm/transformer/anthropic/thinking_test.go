@@ -39,7 +39,7 @@ func TestConvertToChatCompletionResponse_WithThinking(t *testing.T) {
 	require.NotNil(t, result.Choices[0].Message.ReasoningContent)
 	require.Equal(t, thinking, *result.Choices[0].Message.ReasoningContent)
 	require.NotNil(t, result.Choices[0].Message.ReasoningSignature)
-	require.Equal(t, signature, *result.Choices[0].Message.ReasoningSignature)
+	require.Equal(t, *shared.EncodeAnthropicSignature(lo.ToPtr(signature)), *result.Choices[0].Message.ReasoningSignature)
 	require.NotNil(t, result.Choices[0].Message.Content.Content)
 	require.Equal(t, answer, *result.Choices[0].Message.Content.Content)
 	require.Empty(t, result.Choices[0].Message.Content.MultipleContent)
@@ -139,7 +139,7 @@ func TestConvertToChatCompletionResponse_WithThinkingAndRedactedThinking(t *test
 	require.NotNil(t, result.Choices[0].Message.ReasoningContent)
 	require.Equal(t, thinking, *result.Choices[0].Message.ReasoningContent)
 	require.NotNil(t, result.Choices[0].Message.ReasoningSignature)
-	require.Equal(t, signature, *result.Choices[0].Message.ReasoningSignature)
+	require.Equal(t, *shared.EncodeAnthropicSignature(lo.ToPtr(signature)), *result.Choices[0].Message.ReasoningSignature)
 	require.NotNil(t, result.Choices[0].Message.RedactedReasoningContent)
 	require.Equal(t, redactedData, *result.Choices[0].Message.RedactedReasoningContent)
 	require.NotNil(t, result.Choices[0].Message.Content.Content)
@@ -651,6 +651,7 @@ func TestOutputConfig_Outbound(t *testing.T) {
 	tests := []struct {
 		name     string
 		chatReq  *llm.Request
+		config   *Config
 		validate func(t *testing.T, anthropicReq *MessageRequest)
 	}{
 		{
@@ -675,6 +676,32 @@ func TestOutputConfig_Outbound(t *testing.T) {
 			},
 		},
 		{
+			name: "unsupported platform output_config_effort=max -> Thinking enabled high budget",
+			chatReq: &llm.Request{
+				Model:     "claude-3-sonnet-20240229",
+				MaxTokens: lo.ToPtr(int64(4096)),
+				Messages: []llm.Message{
+					{
+						Role:    "user",
+						Content: llm.MessageContent{Content: lo.ToPtr("hello")},
+					},
+				},
+				TransformerMetadata: map[string]any{
+					TransformerMetadataKeyOutputConfigEffort: "max",
+				},
+			},
+			config: &Config{
+				Type: PlatformDeepSeek,
+			},
+			validate: func(t *testing.T, anthropicReq *MessageRequest) {
+				t.Helper()
+				require.Nil(t, anthropicReq.OutputConfig)
+				require.NotNil(t, anthropicReq.Thinking)
+				require.Equal(t, "enabled", anthropicReq.Thinking.Type)
+				require.Equal(t, int64(30000), anthropicReq.Thinking.BudgetTokens)
+			},
+		},
+		{
 			name: "without output_config metadata -> OutputConfig nil",
 			chatReq: &llm.Request{
 				Model:     "claude-3-sonnet-20240229",
@@ -695,7 +722,12 @@ func TestOutputConfig_Outbound(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			anthropicReq := convertToAnthropicRequest(tt.chatReq)
+			var anthropicReq *MessageRequest
+			if tt.config != nil {
+				anthropicReq = convertToAnthropicRequestWithConfig(tt.chatReq, tt.config)
+			} else {
+				anthropicReq = convertToAnthropicRequest(tt.chatReq)
+			}
 			tt.validate(t, anthropicReq)
 		})
 	}
@@ -983,6 +1015,9 @@ func TestOutboundConvert_RedactedThinkingToAnthropic(t *testing.T) {
 		textContent  = "Based on my analysis..."
 	)
 
+	// Signatures in unified format are encoded with the Anthropic prefix
+	encodedSignature := shared.AnthropicSignaturePrefix + signature
+
 	chatReq := &llm.Request{
 		Model:           "claude-sonnet-4-5-20250929",
 		MaxTokens:       lo.ToPtr(int64(16000)),
@@ -997,7 +1032,7 @@ func TestOutboundConvert_RedactedThinkingToAnthropic(t *testing.T) {
 			{
 				Role:                     "assistant",
 				ReasoningContent:         lo.ToPtr(thinking),
-				ReasoningSignature:       lo.ToPtr(signature),
+				ReasoningSignature:       lo.ToPtr(encodedSignature),
 				RedactedReasoningContent: lo.ToPtr(redactedData),
 				Content: llm.MessageContent{
 					Content: lo.ToPtr(textContent),
@@ -1028,6 +1063,7 @@ func TestOutboundConvert_RedactedThinkingToAnthropic(t *testing.T) {
 	require.NotNil(t, assistantMsg.Content.MultipleContent[0].Thinking)
 	require.Equal(t, thinking, *assistantMsg.Content.MultipleContent[0].Thinking)
 	require.NotNil(t, assistantMsg.Content.MultipleContent[0].Signature)
+	// Signature should be decoded (prefix stripped) when sending to Anthropic API
 	require.Equal(t, signature, *assistantMsg.Content.MultipleContent[0].Signature)
 
 	// Second block should be redacted_thinking

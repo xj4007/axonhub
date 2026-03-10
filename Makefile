@@ -1,9 +1,9 @@
-.PHONY: generate build backend frontend cleanup-db \
+.PHONY: generate build build-backend build-frontend build-axonclaw docker-build-axonclaw cleanup-db \
 	test-backend-all \
 	e2e-test e2e-backend-start e2e-backend-stop e2e-backend-status e2e-backend-restart e2e-backend-clean \
 	migration-test migration-test-all migration-test-all-dbs \
 	sync-faq sync-models filter-logs \
-	lint lint-privacy
+	lint lint-all lint-privacy
 
 # Generate GraphQL and Ent code
 generate:
@@ -21,6 +21,18 @@ build-backend:
 	@echo "Building axonhub backend..."
 	go build -ldflags "-s -w" -tags=nomsgpack -o axonhub ./cmd/axonhub
 	@echo "Backend build completed!"
+
+# Build the axonclaw agent
+build-axonclaw:
+	@echo "Building axonclaw..."
+	cd cmd/axonclaw && go build -ldflags "-s -w" -o axonclaw .
+	@echo "Axonclaw build completed!"
+
+# Build axonclaw docker image
+docker-build-axonclaw:
+	@echo "Building axonclaw docker image..."
+	docker build -f cmd/axonclaw/Dockerfile -t axonclaw .
+	@echo "Axonclaw docker image build completed!"
 
 # Build the frontend application
 build-frontend:
@@ -61,8 +73,15 @@ test-backend-all:
 	@echo ""
 	@echo "=== Testing root module ==="
 	go test ./...
+	@echo ""
+	@echo "=== Testing axon module ==="
+	cd axon && go test ./...
+	@echo ""
 	@echo "=== Testing llm module ==="
 	cd llm && go test ./...
+	@echo ""
+	@echo "=== Testing axoncli module ==="
+	cd cmd/axoncli && go test ./...
 	@echo ""
 	@echo "All backend tests completed!"
 
@@ -139,11 +158,27 @@ filter-logs:
 
 # --- Linting ---
 
-# Run all lint checks
-lint: lint-privacy
+GO_LINT_CMD = golangci-lint run --timeout 10m --max-same-issues 50 ./...
+
+GO_MODULES := . axon llm cmd/axoncli cmd/axonclaw
+
+lint-all:
+	@echo "Running golangci-lint across all Go modules..."
+	@for module in $(GO_MODULES); do \
+		echo ""; \
+		echo "=== Linting $$module module ==="; \
+		if [ -f "$$module/go.mod" ]; then \
+			cd $$module && $(GO_LINT_CMD) && cd - > /dev/null; \
+		else \
+			$(GO_LINT_CMD); \
+		fi; \
+	done
+	@echo ""
 	@echo "All lint checks passed!"
 
-# Check for illegal privacy.DecisionContext(...Allow) usage
+lint: lint-all lint-privacy
+	@echo "All lint checks passed!"
+
 lint-privacy:
 	@echo "Checking for illegal privacy.DecisionContext(...Allow) usage..."
 	@./scripts/lint/check-privacy-allow.sh

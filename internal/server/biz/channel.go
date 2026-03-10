@@ -89,7 +89,6 @@ func NewChannelService(params ChannelServiceParams) *ChannelService {
 		apiKeyErrorCounts:  make(map[int]map[string]map[int]int),
 		perfCh:             make(chan *PerformanceRecord, 1024),
 	}
-
 	svc.initChannelPerformances(context.Background())
 
 	watcherMode := params.CacheConfig.Mode
@@ -416,8 +415,10 @@ func (svc *ChannelService) createChannel(ctx context.Context, input ent.CreateCh
 		SetName(input.Name).
 		SetCredentials(input.Credentials).
 		SetSupportedModels(input.SupportedModels).
+		SetManualModels(input.ManualModels).
 		SetDefaultTestModel(input.DefaultTestModel).
 		SetNillableAutoSyncSupportedModels(input.AutoSyncSupportedModels).
+		SetNillableAutoSyncModelPattern(input.AutoSyncModelPattern).
 		SetSettings(input.Settings)
 
 	if input.Tags != nil {
@@ -482,6 +483,7 @@ func (svc *ChannelService) UpdateChannel(ctx context.Context, id int, input *ent
 	}
 
 	mut := svc.entFromContext(ctx).Channel.UpdateOneID(id).
+		SetNillableType(input.Type).
 		SetNillableBaseURL(input.BaseURL).
 		SetNillableName(input.Name).
 		SetNillableDefaultTestModel(input.DefaultTestModel).
@@ -531,6 +533,12 @@ func (svc *ChannelService) UpdateChannel(ctx context.Context, id int, input *ent
 
 	if input.ClearRemark {
 		mut.ClearRemark()
+	}
+
+	if input.ClearAutoSyncModelPattern {
+		mut.ClearAutoSyncModelPattern()
+	} else if input.AutoSyncModelPattern != nil {
+		mut.SetAutoSyncModelPattern(*input.AutoSyncModelPattern)
 	}
 
 	if input.ClearErrorMessage {

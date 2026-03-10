@@ -17,6 +17,8 @@ import { JsonViewer } from '@/components/json-tree-view';
 import { Header } from '@/components/layout/header';
 import { Main } from '@/components/layout/main';
 import { useGeneralSettings } from '@/features/system/data/system';
+import { useSelectedProjectId } from '@/stores/projectStore';
+import { getTokenFromStorage } from '@/stores/authStore';
 import { useUsageLogs } from '../data/usage-logs';
 import { useRequest, useRequestExecutions } from '../data';
 import { ChunksDialog } from './chunks-dialog';
@@ -30,6 +32,7 @@ export default function RequestDetailPage() {
   const navigate = useNavigate();
   const locale = i18n.language === 'zh' ? zhCN : enUS;
   const { getSearchParams } = usePaginationSearch({ defaultPageSize: 20 });
+  const selectedProjectId = useSelectedProjectId();
 
   const [showResponseChunks, setShowResponseChunks] = useState(false);
   const [showExecutionChunks, setShowExecutionChunks] = useState(false);
@@ -37,6 +40,7 @@ export default function RequestDetailPage() {
   const [selectedExecutionChunks, setSelectedExecutionChunks] = useState<any[]>([]);
   const [showCurlPreview, setShowCurlPreview] = useState(false);
   const [curlCommand, setCurlCommand] = useState('');
+  const [isDownloadingVideo, setIsDownloadingVideo] = useState(false);
 
   const { data: settings } = useGeneralSettings();
   const { data: request, isLoading } = useRequest(requestId);
@@ -66,6 +70,57 @@ export default function RequestDetailPage() {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
     toast.success(t('requests.actions.download'));
+  };
+
+  const downloadVideo = async () => {
+    if (!request?.contentSaved || !request?.contentStorageKey) return;
+    if (!selectedProjectId) return;
+
+    const projectIdNumber = extractNumberID(selectedProjectId);
+    const requestIdNumber = extractNumberID(request.id);
+    if (!projectIdNumber || !requestIdNumber) return;
+
+    const url = `/admin/requests/${encodeURIComponent(requestIdNumber)}/content`;
+
+    try {
+      setIsDownloadingVideo(true);
+
+      const token = getTokenFromStorage();
+      if (!token) {
+        toast.error(t('common.errors.sessionExpiredSignIn'));
+        return;
+      }
+
+      const resp = await fetch(url, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'X-Project-ID': selectedProjectId,
+        },
+      });
+
+      if (!resp.ok) {
+        throw new Error(`HTTP ${resp.status}`);
+      }
+
+      const contentDisposition = resp.headers.get('Content-Disposition') || '';
+      const filenameMatch = contentDisposition.match(/filename=\"?([^\";]+)\"?/i);
+      const filename = filenameMatch?.[1] || `video-${requestIdNumber}.mp4`;
+
+      const blob = await resp.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = objectUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(objectUrl);
+      toast.success(t('requests.actions.download'));
+    } catch (err) {
+      toast.error(t('common.errors.operationFailed', { operation: t('requests.actions.downloadVideo') }));
+    } finally {
+      setIsDownloadingVideo(false);
+    }
   };
 
   const showResponseChunksModal = useCallback(() => {
@@ -412,7 +467,14 @@ export default function RequestDetailPage() {
                         </div>
                       </div>
                       <div className='bg-muted/20 h-[300px] w-full overflow-auto rounded-lg border p-4'>
-                        <JsonViewer data={request.requestHeaders} rootName='' defaultExpanded={true} className='text-sm' />
+                        <JsonViewer
+                          data={request.requestHeaders}
+                          rootName=''
+                          defaultExpanded={true}
+                          expandDepth='all'
+                          hideArrayIndices={true}
+                          className='text-sm'
+                        />
                       </div>
                     </div>
                   )}
@@ -444,7 +506,14 @@ export default function RequestDetailPage() {
                       </div>
                     </div>
                     <div className='bg-muted/20 h-[500px] w-full overflow-auto rounded-lg border p-4'>
-                      <JsonViewer data={request.requestBody} rootName='' defaultExpanded={true} className='text-sm' />
+                      <JsonViewer
+                        data={request.requestBody}
+                        rootName=''
+                        defaultExpanded={true}
+                        expandDepth='all'
+                        hideArrayIndices={true}
+                        className='text-sm'
+                      />
                     </div>
                   </div>
                 </TabsContent>
@@ -457,6 +526,20 @@ export default function RequestDetailPage() {
                         {t('requests.columns.responseBody')}
                       </h4>
                       <div className='flex gap-2'>
+                        {(request.format === 'openai/video' || request.format === 'seedance/video') &&
+                          request.contentSaved &&
+                          request.contentStorageKey && (
+                          <Button
+                            variant='outline'
+                            size='sm'
+                            onClick={downloadVideo}
+                            disabled={isDownloadingVideo}
+                            className='hover:bg-primary hover:text-primary-foreground'
+                          >
+                            <Download className='mr-2 h-4 w-4' />
+                            {t('requests.actions.downloadVideo')}
+                          </Button>
+                        )}
                         <Button
                           variant='outline'
                           size='sm'
@@ -491,7 +574,14 @@ export default function RequestDetailPage() {
                     </div>
                     {request.responseBody ? (
                       <div className='bg-muted/20 h-[500px] w-full overflow-auto rounded-lg border p-4'>
-                        <JsonViewer data={request.responseBody} rootName='' defaultExpanded={true} className='text-sm' />
+                        <JsonViewer
+                          data={request.responseBody}
+                          rootName=''
+                          defaultExpanded={true}
+                          expandDepth='all'
+                          hideArrayIndices={true}
+                          className='text-sm'
+                        />
                       </div>
                     ) : (
                       <div className='bg-muted/20 flex h-[500px] w-full items-center justify-center rounded-lg border'>
@@ -636,7 +726,13 @@ export default function RequestDetailPage() {
                                     </div>
                                   </div>
                                   <div className='bg-background h-64 w-full overflow-auto rounded-lg border p-3'>
-                                    <JsonViewer data={execution.requestHeaders} rootName='' defaultExpanded={false} className='text-xs' />
+                                    <JsonViewer
+                                      data={execution.requestHeaders}
+                                      rootName=''
+                                      defaultExpanded={false}
+                                      hideArrayIndices={true}
+                                      className='text-xs'
+                                    />
                                   </div>
                                 </div>
                               )}
@@ -670,7 +766,13 @@ export default function RequestDetailPage() {
                                     </div>
                                   </div>
                                   <div className='bg-background h-64 w-full overflow-auto rounded-lg border p-3'>
-                                    <JsonViewer data={execution.requestBody} rootName='' defaultExpanded={false} className='text-xs' />
+                                    <JsonViewer
+                                      data={execution.requestBody}
+                                      rootName=''
+                                      defaultExpanded={false}
+                                      hideArrayIndices={true}
+                                      className='text-xs'
+                                    />
                                   </div>
                                 </div>
                               )}
@@ -715,7 +817,13 @@ export default function RequestDetailPage() {
                                     </div>
                                   </div>
                                   <div className='bg-background h-64 w-full overflow-auto rounded-lg border p-3'>
-                                    <JsonViewer data={execution.responseBody} rootName='' defaultExpanded={false} className='text-xs' />
+                                    <JsonViewer
+                                      data={execution.responseBody}
+                                      rootName=''
+                                      defaultExpanded={false}
+                                      hideArrayIndices={true}
+                                      className='text-xs'
+                                    />
                                   </div>
                                 </div>
                               )}

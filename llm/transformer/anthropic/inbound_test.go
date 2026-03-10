@@ -336,7 +336,7 @@ func TestInboundTransformer_TransformRequest(t *testing.T) {
 			expectError: true,
 		},
 		{
-			name: "invalid output_config effort value",
+			name: "thinking adaptive with invalid output_config.effort value",
 			httpReq: &httpclient.Request{
 				Headers: http.Header{
 					"Content-Type": []string{"application/json"},
@@ -345,10 +345,62 @@ func TestInboundTransformer_TransformRequest(t *testing.T) {
 					"model": "claude-sonnet-4-5-20250929",
 					"max_tokens": 1024,
 					"messages": [{"role": "user", "content": "Hello"}],
+					"thinking": {"type": "adaptive"},
 					"output_config": {"effort": "banana"}
 				}`),
 			},
 			expectError: true,
+		},
+		{
+			name: "thinking adaptive without output_config is valid",
+			httpReq: &httpclient.Request{
+				Headers: http.Header{
+					"Content-Type": []string{"application/json"},
+				},
+				Body: []byte(`{
+					"model": "claude-sonnet-4-5-20250929",
+					"max_tokens": 1024,
+					"messages": [{"role": "user", "content": "Hello"}],
+					"thinking": {"type": "adaptive"}
+				}`),
+			},
+			expected: &llm.Request{
+				Model:     "claude-sonnet-4-5-20250929",
+				MaxTokens: lo.ToPtr(int64(1024)),
+				Messages: []llm.Message{
+					{
+						Role:    "user",
+						Content: llm.MessageContent{Content: lo.ToPtr("Hello")},
+					},
+				},
+			},
+			expectError: false,
+		},
+		{
+			name: "thinking adaptive with empty output_config.effort is valid",
+			httpReq: &httpclient.Request{
+				Headers: http.Header{
+					"Content-Type": []string{"application/json"},
+				},
+				Body: []byte(`{
+					"model": "claude-sonnet-4-5-20250929",
+					"max_tokens": 1024,
+					"messages": [{"role": "user", "content": "Hello"}],
+					"thinking": {"type": "adaptive"},
+					"output_config": {"effort": ""}
+				}`),
+			},
+			expected: &llm.Request{
+				Model:     "claude-sonnet-4-5-20250929",
+				MaxTokens: lo.ToPtr(int64(1024)),
+				Messages: []llm.Message{
+					{
+						Role:    "user",
+						Content: llm.MessageContent{Content: lo.ToPtr("Hello")},
+					},
+				},
+			},
+			expectError: false,
 		},
 		{
 			name: "tool_choice type tool without name",
@@ -427,6 +479,127 @@ func TestInboundTransformer_TransformRequest(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestInboundTransformer_TransformRequest_ThinkingValidation(t *testing.T) {
+	transformer := NewInboundTransformer()
+
+	mkReq := func(body string) *httpclient.Request {
+		return &httpclient.Request{
+			Headers: http.Header{
+				"Content-Type": []string{"application/json"},
+			},
+			Body: []byte(body),
+		}
+	}
+
+	t.Run("thinking disabled is accepted", func(t *testing.T) {
+		req := mkReq(`{
+			"model": "claude-sonnet-4-5-20250929",
+			"max_tokens": 1024,
+			"messages": [{"role": "user", "content": "Hello"}],
+			"thinking": {"type": "disabled"}
+		}`)
+
+		got, err := transformer.TransformRequest(t.Context(), req)
+		require.NoError(t, err)
+		require.NotNil(t, got)
+		require.Empty(t, got.ReasoningEffort)
+		require.Nil(t, got.ReasoningBudget)
+	})
+
+	t.Run("thinking enabled requires positive budget_tokens", func(t *testing.T) {
+		req := mkReq(`{
+			"model": "claude-sonnet-4-5-20250929",
+			"max_tokens": 1024,
+			"messages": [{"role": "user", "content": "Hello"}],
+			"thinking": {"type": "enabled", "budget_tokens": 0}
+		}`)
+
+		got, err := transformer.TransformRequest(t.Context(), req)
+		require.Error(t, err)
+		require.Nil(t, got)
+		require.Contains(t, err.Error(), "budget_tokens is required and must be positive")
+	})
+
+	t.Run("thinking enabled with positive budget_tokens is accepted", func(t *testing.T) {
+		req := mkReq(`{
+			"model": "claude-sonnet-4-5-20250929",
+			"max_tokens": 1024,
+			"messages": [{"role": "user", "content": "Hello"}],
+			"thinking": {"type": "enabled", "budget_tokens": 15000}
+		}`)
+
+		got, err := transformer.TransformRequest(t.Context(), req)
+		require.NoError(t, err)
+		require.NotNil(t, got)
+		require.Equal(t, lo.ToPtr(int64(15000)), got.ReasoningBudget)
+	})
+
+	t.Run("thinking adaptive without output_config is accepted", func(t *testing.T) {
+		req := mkReq(`{
+			"model": "claude-sonnet-4-5-20250929",
+			"max_tokens": 1024,
+			"messages": [{"role": "user", "content": "Hello"}],
+			"thinking": {"type": "adaptive"}
+		}`)
+
+		got, err := transformer.TransformRequest(t.Context(), req)
+		require.NoError(t, err)
+		require.NotNil(t, got)
+		require.NotNil(t, got.TransformerMetadata)
+		require.Equal(t, "adaptive", got.TransformerMetadata[TransformerMetadataKeyThinkingType])
+		_, hasEffort := got.TransformerMetadata[TransformerMetadataKeyOutputConfigEffort]
+		require.False(t, hasEffort)
+	})
+
+	t.Run("thinking adaptive requires valid output_config.effort", func(t *testing.T) {
+		req := mkReq(`{
+			"model": "claude-sonnet-4-5-20250929",
+			"max_tokens": 1024,
+			"messages": [{"role": "user", "content": "Hello"}],
+			"thinking": {"type": "adaptive"},
+			"output_config": {"effort": "banana"}
+		}`)
+
+		got, err := transformer.TransformRequest(t.Context(), req)
+		require.Error(t, err)
+		require.Nil(t, got)
+		require.Contains(t, err.Error(), "output_config.effort must be one of")
+	})
+
+	t.Run("thinking adaptive with valid effort is accepted", func(t *testing.T) {
+		req := mkReq(`{
+			"model": "claude-sonnet-4-5-20250929",
+			"max_tokens": 1024,
+			"messages": [{"role": "user", "content": "Hello"}],
+			"thinking": {"type": "adaptive"},
+			"output_config": {"effort": "high"}
+		}`)
+
+		got, err := transformer.TransformRequest(t.Context(), req)
+		require.NoError(t, err)
+		require.NotNil(t, got)
+		require.NotNil(t, got.TransformerMetadata)
+		require.Equal(t, "adaptive", got.TransformerMetadata[TransformerMetadataKeyThinkingType])
+		require.Equal(t, "high", got.TransformerMetadata[TransformerMetadataKeyOutputConfigEffort])
+		require.Empty(t, got.ReasoningEffort)
+		require.Nil(t, got.ReasoningBudget)
+	})
+
+	t.Run("invalid thinking.type is rejected", func(t *testing.T) {
+		req := mkReq(`{
+			"model": "claude-sonnet-4-5-20250929",
+			"max_tokens": 1024,
+			"messages": [{"role": "user", "content": "Hello"}],
+			"thinking": {"type": "banana"}
+		}`)
+
+		got, err := transformer.TransformRequest(t.Context(), req)
+		require.Error(t, err)
+		require.Nil(t, got)
+		require.Contains(t, err.Error(), "thinking.type must be one of")
+	})
 }
 
 func TestInboundTransformer_TransformRequest_ToolResultWithImage(t *testing.T) {

@@ -1,14 +1,45 @@
 import type { ComponentType } from 'react';
-import { OpenAI, Anthropic, Google, DeepSeek, Doubao, Moonshot, Zhipu, OpenRouter, XAI, Volcengine, SiliconCloud, PPIO, ZAI, LongCat, Minimax, BurnCloud, Vercel, ModelScope, Bailian, Jina, DeepInfra, Github, Claude, Cerebras, XiaomiMiMo } from '@lobehub/icons';
-import { NanoGPTIcon } from '../components/nanogpt-icon';
+import {
+  OpenAI,
+  Anthropic,
+  Google,
+  DeepSeek,
+  Doubao,
+  Moonshot,
+  Zhipu,
+  OpenRouter,
+  XAI,
+  Volcengine,
+  SiliconCloud,
+  PPIO,
+  ZAI,
+  LongCat,
+  Minimax,
+  BurnCloud,
+  Vercel,
+  ModelScope,
+  Bailian,
+  Jina,
+  DeepInfra,
+  Github,
+  Claude,
+  Cerebras,
+  XiaomiMiMo,
+  Tavily,
+  Exa,
+} from '@lobehub/icons';
+import { BraveIcon } from '@/assets/brave-icon';
+import { NanoGPTIcon } from '@/assets/nanogpt-icon';
 import { BURNCLOUD_DEFAULT_MODELS } from './burncloud-models';
 import { ApiFormat, ChannelType } from './schema';
-
 
 export const OPENAI_CHAT_COMPLETIONS: ApiFormat = 'openai/chat_completions';
 export const OPENAI_RESPONSES: ApiFormat = 'openai/responses';
 export const ANTHROPIC_MESSAGES: ApiFormat = 'anthropic/messages';
 export const GEMINI_CONTENTS: ApiFormat = 'gemini/contents';
+export const TAVILY_SEARCH: ApiFormat = 'tavily/search';
+export const BRAVE_SEARCH: ApiFormat = 'brave/search';
+export const EXA_SEARCH: ApiFormat = 'exa/search';
 
 /**
  * Channel configuration interface
@@ -471,6 +502,14 @@ export const CHANNEL_CONFIGS: Record<ChannelType, ChannelConfig> = {
     color: 'bg-gray-100 text-gray-800 border-gray-200',
     icon: Github,
   },
+  github_copilot: {
+    channelType: 'github_copilot',
+    baseURL: 'https://api.githubcopilot.com',
+    defaultModels: [],
+    apiFormat: OPENAI_CHAT_COMPLETIONS,
+    color: 'bg-[#6e40c9] text-white border-[#6e40c9]',
+    icon: Github,
+  },
   claudecode: {
     channelType: 'claudecode',
     baseURL: 'https://api.anthropic.com/v1',
@@ -494,6 +533,30 @@ export const CHANNEL_CONFIGS: Record<ChannelType, ChannelConfig> = {
     apiFormat: OPENAI_CHAT_COMPLETIONS,
     color: 'bg-gradient-to-br from-[#015a9e] to-[#11e9bb] text-slate-900 border-transparent',
     icon: NanoGPTIcon,
+  },
+  search_tavily: {
+    channelType: 'search_tavily',
+    baseURL: 'https://api.tavily.com',
+    defaultModels: ['__search', '__tavily_search'],
+    apiFormat: TAVILY_SEARCH,
+    color: 'bg-[#468BFF] text-white border-[#468BFF]',
+    icon: Tavily,
+  },
+  search_brave: {
+    channelType: 'search_brave',
+    baseURL: 'https://api.search.brave.com',
+    defaultModels: ['__search', '__brave_search'],
+    apiFormat: BRAVE_SEARCH,
+    color: 'bg-[#FB542B] text-white border-[#FB542B]',
+    icon: BraveIcon,
+  },
+  search_exa: {
+    channelType: 'search_exa',
+    baseURL: 'https://api.exa.ai',
+    defaultModels: ['__search', '__exa_search'],
+    apiFormat: EXA_SEARCH,
+    color: 'bg-[#4338CA] text-white border-[#4338CA]',
+    icon: Exa,
   },
 };
 
@@ -540,10 +603,14 @@ export type Provider =
   | 'bailian'
   | 'jina'
   | 'github'
+  | 'github_copilot'
   | 'cerebras'
   | 'codex'
   | 'antigravity'
-  | 'nanogpt';
+  | 'nanogpt'
+  | 'tavily'
+  | 'brave_search'
+  | 'exa';
 
 /**
  * Map channel type to provider
@@ -587,11 +654,15 @@ export const CHANNEL_TYPE_TO_PROVIDER: Record<ChannelType, Provider> = {
   bailian: 'bailian',
   jina: 'jina',
   github: 'github',
+  github_copilot: 'github_copilot',
   codex: 'codex',
   claudecode: 'claudecode',
   cerebras: 'cerebras',
   antigravity: 'antigravity',
   nanogpt: 'nanogpt',
+  search_tavily: 'tavily',
+  search_brave: 'brave_search',
+  search_exa: 'exa',
 };
 
 /**

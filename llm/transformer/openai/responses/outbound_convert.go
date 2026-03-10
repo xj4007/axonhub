@@ -29,6 +29,17 @@ func convertToTextOptions(chatReq *llm.Request) *TextOptions {
 		result.Format = &TextFormat{
 			Type: chatReq.ResponseFormat.Type,
 		}
+
+		// Extract name, schema, strict, and description from json_schema
+		if chatReq.ResponseFormat.Type == "json_schema" && len(chatReq.ResponseFormat.JSONSchema) > 0 {
+			var jsonSchema rawJSONSchema
+			if err := json.Unmarshal(chatReq.ResponseFormat.JSONSchema, &jsonSchema); err == nil {
+				result.Format.Name = jsonSchema.Name
+				result.Format.Description = jsonSchema.Description
+				result.Format.Schema = jsonSchema.Schema
+				result.Format.Strict = jsonSchema.Strict
+			}
+		}
 	}
 
 	return result
@@ -181,18 +192,18 @@ func convertAssistantMessage(msg llm.Message) []Item {
 	// Handle reasoning content first.
 	// For Requests, reasoning is represented as an `input` item with type="reasoning".
 	// The Responses API uses the `summary` field to hold the reasoning summary text.
-	if (msg.ReasoningContent != nil && *msg.ReasoningContent != "") || msg.ReasoningSignature != nil {
+	var encryptedContent *string
+	if msg.ReasoningSignature != nil {
+		encryptedContent = shared.DecodeOpenAIEncryptedContent(msg.ReasoningSignature)
+	}
+
+	if encryptedContent != nil {
 		summary := []ReasoningSummary{}
 		if msg.ReasoningContent != nil && *msg.ReasoningContent != "" {
 			summary = append(summary, ReasoningSummary{
 				Type: "summary_text",
 				Text: *msg.ReasoningContent,
 			})
-		}
-
-		var encryptedContent *string
-		if msg.ReasoningSignature != nil {
-			encryptedContent = shared.DecodeOpenAIEncryptedContent(msg.ReasoningSignature)
 		}
 
 		items = append(items, Item{
@@ -253,11 +264,6 @@ func convertAssistantMessage(msg llm.Message) []Item {
 	return items
 }
 
-// convertToolMessage converts a tool result message to Responses API Item format.
-func convertToolMessage(msg llm.Message) Item {
-	return convertToolMessageWithType(msg, "function_call_output")
-}
-
 func convertToolMessageWithType(msg llm.Message, itemType string) Item {
 	var output Input
 
@@ -283,7 +289,6 @@ func convertToolMessageWithType(msg llm.Message, itemType string) Item {
 	return Item{
 		Type:   itemType,
 		CallID: lo.FromPtr(msg.ToolCallID),
-		Name:   lo.FromPtr(msg.ToolCallName),
 		Output: &output,
 	}
 }
@@ -340,6 +345,43 @@ func convertFunctionToTool(src llm.Tool) Tool {
 	if len(src.Function.Parameters) > 0 {
 		var params map[string]any
 		if err := json.Unmarshal(src.Function.Parameters, &params); err == nil {
+			// Handle nil map panic - initialize if nil
+			if params == nil {
+				params = map[string]any{}
+			}
+
+			// For strict mode, additionalProperties must be false and all properties must be required
+			// See: https://platform.openai.com/docs/guides/function-calling#strict-mode
+			if src.Function.Strict != nil && *src.Function.Strict {
+				// Always set additionalProperties: false for strict validation
+				// Overwrite any existing value (including true) to ensure false
+				params["additionalProperties"] = false
+
+				// When strict mode is enabled, ALL properties must be listed in "required"
+				if props, ok := params["properties"].(map[string]any); ok && len(props) > 0 {
+					required := make([]string, 0, len(props))
+					// First, check if there's an existing required array and preserve it
+					if existingRequired, ok := params["required"].([]any); ok {
+						for _, r := range existingRequired {
+							if s, ok := r.(string); ok {
+								required = append(required, s)
+							}
+						}
+					}
+					// Add any missing property keys to required
+					requiredSet := make(map[string]bool)
+					for _, r := range required {
+						requiredSet[r] = true
+					}
+					for key := range props {
+						if !requiredSet[key] {
+							required = append(required, key)
+						}
+					}
+					params["required"] = required
+				}
+			}
+
 			tool.Parameters = params
 		}
 	}

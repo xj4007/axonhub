@@ -12,6 +12,8 @@ import {
   IconBaselineDensityMedium,
   IconAi,
   IconNote,
+  IconServer,
+  IconMessage,
 } from '@tabler/icons-react';
 import { Command } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -84,6 +86,11 @@ export function useSidebarData(): SidebarData {
           icon: IconRobot,
         } as NavLink,
         {
+          title: t('sidebar.items.agentHosts'),
+          url: '/agent-hosts',
+          icon: IconServer,
+        } as NavLink,
+        {
           title: t('sidebar.items.dataStorages'),
           url: '/data-storages',
           icon: IconDatabase,
@@ -138,7 +145,16 @@ export function useSidebarData(): SidebarData {
           url: '/project/threads',
           icon: IconBaselineDensityMedium,
         } as NavLink,
-
+        {
+          title: t('sidebar.items.agents'),
+          url: '/project/agents',
+          icon: IconRobot,
+        } as NavLink,
+        {
+          title: t('sidebar.items.messageChannels'),
+          url: '/project/message-channels',
+          icon: IconMessage,
+        } as NavLink,
         {
           title: t('sidebar.items.users'),
           url: '/project/users',

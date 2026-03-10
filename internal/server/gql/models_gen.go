@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/looplj/axonhub/internal/ent"
+	"github.com/looplj/axonhub/internal/ent/agentmessage"
 	"github.com/looplj/axonhub/internal/ent/channel"
 	"github.com/looplj/axonhub/internal/objects"
 	"github.com/looplj/axonhub/internal/server/biz"
@@ -43,6 +44,36 @@ type AddUserToProjectInput struct {
 	RoleIDs   []*objects.GUID `json:"roleIDs,omitempty"`
 }
 
+// Approval request view for IM/Web operator surfaces.
+//
+// Backed by agent_messages(kind=approval_request, direction=to_user, status=pending).
+type AgentApprovalRequestMessage struct {
+	ID              objects.GUID           `json:"id"`
+	AgentID         objects.GUID           `json:"agentID"`
+	AgentInstanceID objects.GUID           `json:"agentInstanceID"`
+	CorrelationID   string                 `json:"correlationID"`
+	Content         objects.JSONRawMessage `json:"content"`
+	Sequence        int                    `json:"sequence"`
+	CreatedAt       time.Time              `json:"createdAt"`
+}
+
+// Minimal message view for Agent thread chat in Web UI.
+type AgentChatMessage struct {
+	ID              objects.GUID            `json:"id"`
+	AgentID         objects.GUID            `json:"agentID"`
+	AgentInstanceID objects.GUID            `json:"agentInstanceID"`
+	Direction       agentmessage.Direction  `json:"direction"`
+	SenderType      agentmessage.SenderType `json:"senderType"`
+	SenderID        *int                    `json:"senderID,omitempty"`
+	Type            agentmessage.Type       `json:"type"`
+	CorrelationID   string                  `json:"correlationID"`
+	Content         objects.JSONRawMessage  `json:"content"`
+	Text            string                  `json:"text"`
+	Sequence        int                     `json:"sequence"`
+	Status          agentmessage.Status     `json:"status"`
+	CreatedAt       time.Time               `json:"createdAt"`
+}
+
 type ApplyChannelOverrideTemplateInput struct {
 	TemplateID objects.GUID       `json:"templateID"`
 	ChannelIDs []*objects.GUID    `json:"channelIDs"`
@@ -74,6 +105,12 @@ type BackupPayload struct {
 	Success bool    `json:"success"`
 	Data    *string `json:"data,omitempty"`
 	Message *string `json:"message,omitempty"`
+}
+
+type BatchMessageChannelAgentInstanceBindingInput struct {
+	AgentInstanceID objects.GUID                                `json:"agentInstanceID"`
+	Enabled         bool                                        `json:"enabled"`
+	Config          *objects.MessageChannelAgentInstanceBinding `json:"config,omitempty"`
 }
 
 type BrandSettings struct {
@@ -253,6 +290,16 @@ type RequestStatsByModel struct {
 	Count   int    `json:"count"`
 }
 
+type ResolveApprovalInput struct {
+	AgentID         objects.GUID   `json:"agentID"`
+	AgentInstanceID *objects.GUID  `json:"agentInstanceID,omitempty"`
+	RequestID       string         `json:"requestID"`
+	Granted         bool           `json:"granted"`
+	Scope           *ApprovalScope `json:"scope,omitempty"`
+	Reason          *string        `json:"reason,omitempty"`
+	ResourceIndices []int          `json:"resourceIndices,omitempty"`
+}
+
 type RestorePayload struct {
 	Success bool    `json:"success"`
 	Message *string `json:"message,omitempty"`
@@ -272,6 +319,11 @@ type SignInInput struct {
 type SignInPayload struct {
 	User  *ent.User `json:"user"`
 	Token string    `json:"token"`
+}
+
+type SyncChannelModelsPayload struct {
+	ChannelID       objects.GUID `json:"channelID"`
+	SupportedModels []string     `json:"supportedModels"`
 }
 
 type SystemModelSettingOnboarding struct {
@@ -297,15 +349,19 @@ type TestChannelPayload struct {
 }
 
 type TokenStats struct {
-	TotalInputTokensToday      int `json:"totalInputTokensToday"`
-	TotalOutputTokensToday     int `json:"totalOutputTokensToday"`
-	TotalCachedTokensToday     int `json:"totalCachedTokensToday"`
-	TotalInputTokensThisWeek   int `json:"totalInputTokensThisWeek"`
-	TotalOutputTokensThisWeek  int `json:"totalOutputTokensThisWeek"`
-	TotalCachedTokensThisWeek  int `json:"totalCachedTokensThisWeek"`
-	TotalInputTokensThisMonth  int `json:"totalInputTokensThisMonth"`
-	TotalOutputTokensThisMonth int `json:"totalOutputTokensThisMonth"`
-	TotalCachedTokensThisMonth int `json:"totalCachedTokensThisMonth"`
+	TotalInputTokensToday      int        `json:"totalInputTokensToday"`
+	TotalOutputTokensToday     int        `json:"totalOutputTokensToday"`
+	TotalCachedTokensToday     int        `json:"totalCachedTokensToday"`
+	TotalInputTokensThisWeek   int        `json:"totalInputTokensThisWeek"`
+	TotalOutputTokensThisWeek  int        `json:"totalOutputTokensThisWeek"`
+	TotalCachedTokensThisWeek  int        `json:"totalCachedTokensThisWeek"`
+	TotalInputTokensThisMonth  int        `json:"totalInputTokensThisMonth"`
+	TotalOutputTokensThisMonth int        `json:"totalOutputTokensThisMonth"`
+	TotalCachedTokensThisMonth int        `json:"totalCachedTokensThisMonth"`
+	TotalInputTokensAllTime    int        `json:"totalInputTokensAllTime"`
+	TotalOutputTokensAllTime   int        `json:"totalOutputTokensAllTime"`
+	TotalCachedTokensAllTime   int        `json:"totalCachedTokensAllTime"`
+	LastUpdated                *time.Time `json:"lastUpdated,omitempty"`
 }
 
 type TokenStatsByAPIKey struct {
@@ -377,6 +433,65 @@ type VersionCheck struct {
 	ReleaseURL     string `json:"releaseUrl"`
 }
 
+type ApprovalScope string
+
+const (
+	ApprovalScopeOnce      ApprovalScope = "once"
+	ApprovalScopeThread    ApprovalScope = "thread"
+	ApprovalScopeWorkspace ApprovalScope = "workspace"
+	ApprovalScopeGlobal    ApprovalScope = "global"
+)
+
+var AllApprovalScope = []ApprovalScope{
+	ApprovalScopeOnce,
+	ApprovalScopeThread,
+	ApprovalScopeWorkspace,
+	ApprovalScopeGlobal,
+}
+
+func (e ApprovalScope) IsValid() bool {
+	switch e {
+	case ApprovalScopeOnce, ApprovalScopeThread, ApprovalScopeWorkspace, ApprovalScopeGlobal:
+		return true
+	}
+	return false
+}
+
+func (e ApprovalScope) String() string {
+	return string(e)
+}
+
+func (e *ApprovalScope) UnmarshalGQL(v any) error {
+	str, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("enums must be strings")
+	}
+
+	*e = ApprovalScope(str)
+	if !e.IsValid() {
+		return fmt.Errorf("%s is not a valid ApprovalScope", str)
+	}
+	return nil
+}
+
+func (e ApprovalScope) MarshalGQL(w io.Writer) {
+	fmt.Fprint(w, strconv.Quote(e.String()))
+}
+
+func (e *ApprovalScope) UnmarshalJSON(b []byte) error {
+	s, err := strconv.Unquote(string(b))
+	if err != nil {
+		return err
+	}
+	return e.UnmarshalGQL(s)
+}
+
+func (e ApprovalScope) MarshalJSON() ([]byte, error) {
+	var buf bytes.Buffer
+	e.MarshalGQL(&buf)
+	return buf.Bytes(), nil
+}
+
 type OverrideApplyMode string
 
 const (
@@ -425,6 +540,66 @@ func (e *OverrideApplyMode) UnmarshalJSON(b []byte) error {
 }
 
 func (e OverrideApplyMode) MarshalJSON() ([]byte, error) {
+	var buf bytes.Buffer
+	e.MarshalGQL(&buf)
+	return buf.Bytes(), nil
+}
+
+// Agent management (admin GraphQL).
+type ReasoningEffort string
+
+const (
+	ReasoningEffortNone   ReasoningEffort = "none"
+	ReasoningEffortLow    ReasoningEffort = "low"
+	ReasoningEffortMedium ReasoningEffort = "medium"
+	ReasoningEffortHigh   ReasoningEffort = "high"
+)
+
+var AllReasoningEffort = []ReasoningEffort{
+	ReasoningEffortNone,
+	ReasoningEffortLow,
+	ReasoningEffortMedium,
+	ReasoningEffortHigh,
+}
+
+func (e ReasoningEffort) IsValid() bool {
+	switch e {
+	case ReasoningEffortNone, ReasoningEffortLow, ReasoningEffortMedium, ReasoningEffortHigh:
+		return true
+	}
+	return false
+}
+
+func (e ReasoningEffort) String() string {
+	return string(e)
+}
+
+func (e *ReasoningEffort) UnmarshalGQL(v any) error {
+	str, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("enums must be strings")
+	}
+
+	*e = ReasoningEffort(str)
+	if !e.IsValid() {
+		return fmt.Errorf("%s is not a valid ReasoningEffort", str)
+	}
+	return nil
+}
+
+func (e ReasoningEffort) MarshalGQL(w io.Writer) {
+	fmt.Fprint(w, strconv.Quote(e.String()))
+}
+
+func (e *ReasoningEffort) UnmarshalJSON(b []byte) error {
+	s, err := strconv.Unquote(string(b))
+	if err != nil {
+		return err
+	}
+	return e.UnmarshalGQL(s)
+}
+
+func (e ReasoningEffort) MarshalJSON() ([]byte, error) {
 	var buf bytes.Buffer
 	e.MarshalGQL(&buf)
 	return buf.Bytes(), nil

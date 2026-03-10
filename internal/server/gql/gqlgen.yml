@@ -11,9 +11,13 @@ schema:
   - model.graphql
   - backup.graphql
   - channel_probe.graphql
+  - agent.graphql
+  - agent_host.graphql
   - prompt.graphql
   - price.graphql
   - cost.graphql
+  - messages.graphql
+
 
 omit_gqlgen_version_in_file_notice: true
 
@@ -40,6 +44,7 @@ autobind:
   - github.com/looplj/axonhub/internal/ent/request
   - github.com/looplj/axonhub/internal/ent/requestexecution
   - github.com/looplj/axonhub/internal/ent/channel
+  - github.com/looplj/axonhub/internal/ent/agenthost
   - github.com/looplj/axonhub/internal/server/biz
 
 converters:
@@ -85,6 +90,18 @@ models:
   JSONRawMessageInput:
     model:
       - github.com/looplj/axonhub/internal/objects.JSONRawMessage
+  AgentBuiltinTool:
+    model:
+      - github.com/looplj/axonhub/internal/objects.AgentBuiltinTool
+  AgentSkillsPolicy:
+    model:
+      - github.com/looplj/axonhub/internal/objects.AgentSkillsPolicy
+  AgentBuiltinToolInput:
+    model:
+      - github.com/looplj/axonhub/internal/objects.AgentBuiltinTool
+  AgentSkillsPolicyInput:
+    model:
+      - github.com/looplj/axonhub/internal/objects.AgentSkillsPolicy
   Decimal:
     model:
       - github.com/looplj/axonhub/internal/objects.Decimal
@@ -478,6 +495,30 @@ models:
   TierCostInput:
     model:
       - github.com/looplj/axonhub/internal/objects.TierCost
+  MessageChannelSettings:
+    model:
+      - github.com/looplj/axonhub/internal/objects.MessageChannelSettings
+  MessageChannelSettingsInput:
+    model:
+      - github.com/looplj/axonhub/internal/objects.MessageChannelSettings
+  FeishuSettings:
+    model:
+      - github.com/looplj/axonhub/internal/objects.FeishuSettings
+  FeishuSettingsInput:
+    model:
+      - github.com/looplj/axonhub/internal/objects.FeishuSettings
+  MessageChannelAgentInstanceBinding:
+    model:
+      - github.com/looplj/axonhub/internal/objects.MessageChannelAgentInstanceBinding
+  MessageChannelAgentInstanceBindingInput:
+    model:
+      - github.com/looplj/axonhub/internal/objects.MessageChannelAgentInstanceBinding
+  MessageChatType:
+    model:
+      - github.com/looplj/axonhub/internal/objects.MessageChatType
+  MessageChatTypeInput:
+    model:
+      - github.com/looplj/axonhub/internal/objects.MessageChatType
   CostItemInput:
     model:
       - github.com/looplj/axonhub/internal/objects.CostItem
@@ -508,6 +549,12 @@ models:
   UpdateSystemGeneralSettingsInput:
     model:
       - github.com/looplj/axonhub/internal/server/biz.SystemGeneralSettings
+  VideoStorageSettings:
+    model:
+      - github.com/looplj/axonhub/internal/server/biz.VideoStorageSettings
+  UpdateVideoStorageSettingsInput:
+    model:
+      - github.com/looplj/axonhub/internal/server/biz.VideoStorageSettings
   ChannelProbeSetting:
     model:
       - github.com/looplj/axonhub/internal/server/biz.ChannelProbeSetting
@@ -562,3 +609,24 @@ models:
   DeleteDisabledAPIKeysPayload:
     model:
       - github.com/looplj/axonhub/internal/server/biz.DeleteDisabledAPIKeysResult
+  SendAgentMessageInput:
+    model:
+      - github.com/looplj/axonhub/internal/server/biz.SendAgentMessageInput
+  AckAgentMessagesInput:
+    model:
+      - github.com/looplj/axonhub/internal/server/biz.AckAgentMessagesInput
+  AgentHostTestResult:
+    model:
+      - github.com/looplj/axonhub/internal/server/biz.TestConnectionResult
+  AgentInstanceDeployment:
+    model:
+      - github.com/looplj/axonhub/internal/objects.AgentInstanceDeployment
+  AgentInstanceDeploymentInput:
+    model:
+      - github.com/looplj/axonhub/internal/objects.AgentInstanceDeployment
+  DeployAxonclawResult:
+    model:
+      - github.com/looplj/axonhub/internal/server/biz.DeployAxonclawResult
+  ControlAxonclawInstanceResult:
+    model:
+      - github.com/looplj/axonhub/internal/server/biz.ControlAxonclawInstanceResult

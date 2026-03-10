@@ -4,11 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/samber/lo"
 
@@ -16,13 +19,121 @@ import (
 	"github.com/looplj/axonhub/llm/httpclient"
 	"github.com/looplj/axonhub/llm/transformer/anthropic/claudecode"
 	"github.com/looplj/axonhub/llm/transformer/antigravity"
+	"github.com/looplj/axonhub/llm/transformer/gemini/vertex"
 	"github.com/looplj/axonhub/llm/transformer/openai/codex"
+	"github.com/looplj/axonhub/llm/transformer/openai/copilot"
 )
+
+const providerConfCacheDuration = 1 * time.Hour
 
 // ModelFetcher handles fetching models from provider APIs.
 type ModelFetcher struct {
-	httpClient     *httpclient.HttpClient
-	channelService *ChannelService
+	httpClient          *httpclient.HttpClient
+	channelService      *ChannelService
+	copilotFetcher      *providerConfFetcher
+	geminiVertexFetcher *providerConfFetcher
+}
+
+// providerConfFetcher handles fetching models from PublicProviderConf with caching.
+type providerConfFetcher struct {
+	modelsCache    []ModelIdentify
+	cacheMu        sync.RWMutex
+	cacheTimestamp time.Time
+	cacheDuration  time.Duration
+	providerURL    string
+}
+
+// fetch fetches models with caching using double-check locking.
+func (f *providerConfFetcher) fetch(ctx context.Context, httpClient *httpclient.HttpClient) []ModelIdentify {
+	f.cacheMu.RLock()
+	if len(f.modelsCache) > 0 && time.Since(f.cacheTimestamp) < f.cacheDuration {
+		models := make([]ModelIdentify, len(f.modelsCache))
+		copy(models, f.modelsCache)
+		f.cacheMu.RUnlock()
+		return models
+	}
+	f.cacheMu.RUnlock()
+
+	f.cacheMu.Lock()
+	defer f.cacheMu.Unlock()
+
+	// Double-check after acquiring write lock
+	if len(f.modelsCache) > 0 && time.Since(f.cacheTimestamp) < f.cacheDuration {
+		models := make([]ModelIdentify, len(f.modelsCache))
+		copy(models, f.modelsCache)
+		return models
+	}
+
+	models, err := f.fetchFromSource(ctx, httpClient)
+	if err != nil {
+		slog.Error("failed to fetch models from source", "providerURL", f.providerURL, "error", err)
+		// If fetch failed but cache exists, return defensive copy
+		if len(f.modelsCache) > 0 {
+			cached := make([]ModelIdentify, len(f.modelsCache))
+			copy(cached, f.modelsCache)
+			return cached
+		}
+		return nil
+	}
+	if len(models) > 0 {
+		// Store a copy in cache to avoid shared backing array
+		f.modelsCache = make([]ModelIdentify, len(models))
+		copy(f.modelsCache, models)
+		f.cacheTimestamp = time.Now()
+
+		// Return a copy to callers
+		copied := make([]ModelIdentify, len(models))
+		copy(copied, models)
+		return copied
+	}
+
+	return nil
+}
+
+// fetchFromSource fetches models from PublicProviderConf.
+func (f *providerConfFetcher) fetchFromSource(ctx context.Context, httpClient *httpclient.HttpClient) ([]ModelIdentify, error) {
+	req := &httpclient.Request{
+		Method: http.MethodGet,
+		URL:    f.providerURL,
+		Headers: http.Header{
+			"Accept": []string{"application/json"},
+		},
+	}
+
+	resp, err := httpClient.Do(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch models: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("failed to fetch models: non-OK status %d: %s", resp.StatusCode, string(resp.Body))
+	}
+
+	type providerConfResponse struct {
+		ID     string `json:"id"`
+		Models []struct {
+			ID string `json:"id"`
+		} `json:"models"`
+	}
+
+	var conf providerConfResponse
+	if err := json.Unmarshal(resp.Body, &conf); err != nil {
+		return nil, fmt.Errorf("failed to parse provider conf: %w", err)
+	}
+
+	if conf.ID == "" {
+		return nil, fmt.Errorf("provider ID not found in response")
+	}
+
+	// Build models slice, filtering out empty IDs
+	models := make([]ModelIdentify, 0, len(conf.Models))
+	for _, m := range conf.Models {
+		if m.ID != "" {
+			models = append(models, ModelIdentify{ID: m.ID})
+		}
+	}
+
+	return models, nil
 }
 
 // NewModelFetcher creates a new ModelFetcher instance.
@@ -30,6 +141,14 @@ func NewModelFetcher(httpClient *httpclient.HttpClient, channelService *ChannelS
 	return &ModelFetcher{
 		httpClient:     httpClient,
 		channelService: channelService,
+		copilotFetcher: &providerConfFetcher{
+			cacheDuration: providerConfCacheDuration,
+			providerURL:   copilot.ProviderConfURL,
+		},
+		geminiVertexFetcher: &providerConfFetcher{
+			cacheDuration: providerConfCacheDuration,
+			providerURL:   vertex.ProviderConfURL,
+		},
 	}
 }
 
@@ -37,8 +156,9 @@ func NewModelFetcher(httpClient *httpclient.HttpClient, channelService *ChannelS
 type FetchModelsInput struct {
 	ChannelType string
 	BaseURL     string
-	APIKey      *string
-	ChannelID   *int
+	//nolint:gosec // G117: Field name contains "APIKey" but this is input data, not a hardcoded secret
+	APIKey    *string
+	ChannelID *int
 }
 
 // FetchModelsResult represents the result of fetching models.
@@ -48,12 +168,12 @@ type FetchModelsResult struct {
 }
 
 // FetchModels fetches available models from the provider API.
-func (f *ModelFetcher) getDefaultModels(channelType string) []ModelIdentify {
-	return f.getDefaultModelsByType(channel.Type(channelType))
+func (f *ModelFetcher) getDefaultModels(ctx context.Context, channelType string) []ModelIdentify {
+	return f.getDefaultModelsByType(ctx, channel.Type(channelType))
 }
 
-func (f *ModelFetcher) getDefaultModelsByType(typ channel.Type) []ModelIdentify {
-	//nolint:exhaustive // only support codex and claudecode for now.
+func (f *ModelFetcher) getDefaultModelsByType(ctx context.Context, typ channel.Type) []ModelIdentify {
+	//nolint:exhaustive // only supports default model fetching for specific channel types (antigravity, codex, claudecode, github_copilot, gemini_vertex).
 	switch typ {
 	case channel.TypeAntigravity:
 		return lo.Map(antigravity.DefaultModels(), func(id string, _ int) ModelIdentify { return ModelIdentify{ID: id} })
@@ -61,13 +181,27 @@ func (f *ModelFetcher) getDefaultModelsByType(typ channel.Type) []ModelIdentify 
 		return lo.Map(codex.DefaultModels(), func(id string, _ int) ModelIdentify { return ModelIdentify{ID: id} })
 	case channel.TypeClaudecode:
 		return lo.Map(claudecode.DefaultModels(), func(id string, _ int) ModelIdentify { return ModelIdentify{ID: id} })
+	case channel.TypeGithubCopilot:
+		return f.fetchCopilotModels(ctx)
+	case channel.TypeGeminiVertex:
+		return f.fetchGeminiVertexModels(ctx)
 	default:
 		return nil
 	}
 }
 
-func (f *ModelFetcher) tryReturnDefaultModels(channelType string) (*FetchModelsResult, bool) {
-	models := f.getDefaultModels(channelType)
+// fetchCopilotModels fetches GitHub Copilot models from PublicProviderConf with caching.
+func (f *ModelFetcher) fetchCopilotModels(ctx context.Context) []ModelIdentify {
+	return f.copilotFetcher.fetch(ctx, f.httpClient)
+}
+
+// fetchGeminiVertexModels fetches Gemini Vertex models from PublicProviderConf with caching.
+func (f *ModelFetcher) fetchGeminiVertexModels(ctx context.Context) []ModelIdentify {
+	return f.geminiVertexFetcher.fetch(ctx, f.httpClient)
+}
+
+func (f *ModelFetcher) tryReturnDefaultModels(ctx context.Context, channelType string) (*FetchModelsResult, bool) {
+	models := f.getDefaultModels(ctx, channelType)
 	if models != nil {
 		return &FetchModelsResult{Models: models}, true
 	}
@@ -82,7 +216,7 @@ func (f *ModelFetcher) FetchModels(ctx context.Context, input FetchModelsInput) 
 		}, nil
 	}
 
-	if result, ok := f.tryReturnDefaultModels(input.ChannelType); ok {
+	if result, ok := f.tryReturnDefaultModels(ctx, input.ChannelType); ok {
 		return result, nil
 	}
 
@@ -105,7 +239,7 @@ func (f *ModelFetcher) FetchModels(ctx context.Context, input FetchModelsInput) 
 		}
 
 		if ch.Credentials.IsOAuth() {
-			if models := f.getDefaultModelsByType(ch.Type); models != nil {
+			if models := f.getDefaultModelsByType(ctx, ch.Type); models != nil {
 				return &FetchModelsResult{Models: models}, nil
 			}
 		}
@@ -130,7 +264,7 @@ func (f *ModelFetcher) FetchModels(ctx context.Context, input FetchModelsInput) 
 	}
 
 	if isOAuthJSON(apiKey) {
-		if result, ok := f.tryReturnDefaultModels(input.ChannelType); ok {
+		if result, ok := f.tryReturnDefaultModels(ctx, input.ChannelType); ok {
 			return result, nil
 		}
 	}
@@ -145,6 +279,21 @@ func (f *ModelFetcher) FetchModels(ctx context.Context, input FetchModelsInput) 
 	}
 
 	modelsURL, authHeaders := f.prepareModelsEndpoint(channelType, input.BaseURL)
+
+	// GitHub Copilot uses cached provider conf instead of API endpoint
+	if channelType == channel.TypeGithubCopilot {
+		models := f.fetchCopilotModels(ctx)
+		if models == nil {
+			return &FetchModelsResult{
+				Models: []ModelIdentify{},
+				Error:  lo.ToPtr("failed to fetch copilot models"),
+			}, nil
+		}
+		return &FetchModelsResult{
+			Models: models,
+			Error:  nil,
+		}, nil
+	}
 
 	req := &httpclient.Request{
 		Method:  http.MethodGet,
@@ -342,6 +491,9 @@ func (f *ModelFetcher) prepareModelsEndpoint(channelType channel.Type, baseURL s
 	case channelType == channel.TypeZai || channelType == channel.TypeZhipu:
 		baseURL = strings.TrimSuffix(baseURL, "/v4")
 		return baseURL + "/v4/models", headers
+	case channelType == channel.TypeDoubao || channelType == channel.TypeVolcengine:
+		baseURL = strings.TrimSuffix(baseURL, "/v3")
+		return baseURL + "/v3/models", headers
 	case channelType.IsAnthropicLike():
 		baseURL = strings.TrimSuffix(baseURL, "/anthropic")
 		baseURL = strings.TrimSuffix(baseURL, "/claude")
@@ -356,6 +508,10 @@ func (f *ModelFetcher) prepareModelsEndpoint(channelType channel.Type, baseURL s
 	case channelType == channel.TypeGithub:
 		// GitHub Models uses a separate catalog endpoint
 		return "https://models.github.ai/catalog/models", headers
+	case channelType == channel.TypeGithubCopilot:
+		// GitHub Copilot models are fetched from cached provider conf, not via API endpoint
+		// Return empty URL to indicate no direct model API - use fetchCopilotModels instead
+		return "", headers
 	default:
 		if useRawURL {
 			return baseURL + "/models", headers

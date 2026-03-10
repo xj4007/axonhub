@@ -12,6 +12,7 @@ var Module = fx.Module("biz",
 	fx.Provide(NewChannelService),
 	fx.Provide(NewRequestService),
 	fx.Provide(NewUsageLogService),
+	fx.Provide(NewVideoService),
 	fx.Provide(NewUserService),
 	fx.Provide(NewAPIKeyService),
 	fx.Provide(NewProjectService),
@@ -23,8 +24,24 @@ var Module = fx.Module("biz",
 	fx.Provide(NewModelService),
 	fx.Provide(NewChannelProbeService),
 	fx.Provide(NewPromptService),
+	fx.Provide(NewAgentService),
+	fx.Provide(NewAgentBootstrapService),
+	fx.Provide(NewAgentHostService),
+	fx.Provide(NewAgentDeployService),
 	fx.Provide(NewQuotaService),
 	fx.Provide(NewProviderQuotaService),
+	fx.Provide(NewMessageChannelService),
+	fx.Provide(NewMessageGateway),
+	fx.Invoke(func(lc fx.Lifecycle, svc *MessageGateway) {
+		lc.Append(fx.Hook{
+			OnStart: func(ctx context.Context) error {
+				return svc.Start(ctx)
+			},
+			OnStop: func(ctx context.Context) error {
+				return svc.Stop(ctx)
+			},
+		})
+	}),
 	fx.Invoke(func(lc fx.Lifecycle, svc *ProviderQuotaService) {
 		lc.Append(fx.Hook{
 			OnStart: func(ctx context.Context) error {

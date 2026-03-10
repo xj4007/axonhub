@@ -17,7 +17,6 @@ import (
 	"github.com/looplj/axonhub/llm/internal/pkg/xmap"
 	"github.com/looplj/axonhub/llm/internal/pkg/xurl"
 	"github.com/looplj/axonhub/llm/transformer"
-	"github.com/looplj/axonhub/llm/transformer/shared"
 )
 
 var _ transformer.Inbound = (*InboundTransformer)(nil)
@@ -272,6 +271,19 @@ func convertToLLMRequest(req *Request) (*llm.Request, error) {
 	if req.Text != nil && req.Text.Format != nil && req.Text.Format.Type != "" {
 		chatReq.ResponseFormat = &llm.ResponseFormat{
 			Type: req.Text.Format.Type,
+		}
+
+		// Reconstruct json_schema from TextFormat fields
+		if req.Text.Format.Type == "json_schema" && req.Text.Format.Name != "" {
+			jsonSchema := rawJSONSchema{
+				Name:        req.Text.Format.Name,
+				Description: req.Text.Format.Description,
+				Schema:      req.Text.Format.Schema,
+				Strict:      req.Text.Format.Strict,
+			}
+			if data, err := json.Marshal(jsonSchema); err == nil {
+				chatReq.ResponseFormat.JSONSchema = data
+			}
 		}
 	}
 
@@ -775,11 +787,13 @@ func convertToResponsesAPIResponse(chatResp *llm.Response) *Response {
 			}
 
 			resp.Output = append(resp.Output, Item{
-				ID:               generateItemID(),
-				Type:             "reasoning",
-				Status:           lo.ToPtr("completed"),
-				Summary:          summary,
-				EncryptedContent: shared.DecodeOpenAIEncryptedContent(message.ReasoningSignature),
+				ID:      generateItemID(),
+				Type:    "reasoning",
+				Status:  lo.ToPtr("completed"),
+				Summary: summary,
+				// Preserve the internal signature representation (with prefix) so clients can
+				// round-trip it back in the next request without losing provider identity.
+				EncryptedContent: message.ReasoningSignature,
 			})
 		}
 

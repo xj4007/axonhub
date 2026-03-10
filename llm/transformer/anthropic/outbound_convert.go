@@ -55,7 +55,14 @@ func buildBaseRequest(chatReq *llm.Request, config *Config) *MessageRequest {
 	// Restore output_config from TransformerMetadata
 	if chatReq.TransformerMetadata != nil {
 		if effort, ok := chatReq.TransformerMetadata[TransformerMetadataKeyOutputConfigEffort].(string); ok && effort != "" {
-			req.OutputConfig = &OutputConfig{Effort: effort}
+			if supportsAdaptiveThinking(config) {
+				req.OutputConfig = &OutputConfig{Effort: effort}
+			} else if req.Thinking == nil || req.Thinking.Type == "adaptive" {
+				req.Thinking = &Thinking{
+					Type:         "enabled",
+					BudgetTokens: getThinkingBudgetTokensWithConfig(effort, config),
+				}
+			}
 		}
 	}
 
@@ -438,7 +445,20 @@ func convertAssistantWithToolCalls(msg llm.Message) ([]MessageParam, bool) {
 func buildPreBlocks(msg llm.Message) []MessageContentBlock {
 	var blocks []MessageContentBlock
 
-	if block := buildThinkingBlock(msg.ReasoningContent, msg.ReasoningSignature); block != nil {
+	// If the reasoning signature is not from Anthropic,
+	// drop thinking content to avoid invalid signature/thinking pairing.
+	reasoningContent := msg.ReasoningContent
+	reasoningSignature := msg.ReasoningSignature
+	if reasoningSignature != nil && *reasoningSignature != "" && !shared.IsAnthropicSignature(reasoningSignature) {
+		reasoningContent = nil
+		reasoningSignature = nil
+	}
+	// Decode Anthropic signature prefix before sending to the API.
+	if decoded := shared.DecodeAnthropicSignature(reasoningSignature); decoded != nil {
+		reasoningSignature = decoded
+	}
+
+	if block := buildThinkingBlock(reasoningContent, reasoningSignature); block != nil {
 		blocks = append(blocks, *block)
 	}
 
@@ -512,7 +532,17 @@ func hasThinkingContent(msg llm.Message) bool {
 func buildMultipleContentWithThinking(msg llm.Message) MessageContent {
 	blocks := make([]MessageContentBlock, 0, 3)
 
-	if block := buildThinkingBlock(msg.ReasoningContent, msg.ReasoningSignature); block != nil {
+	reasoningContent := msg.ReasoningContent
+	reasoningSignature := msg.ReasoningSignature
+	if reasoningSignature != nil && *reasoningSignature != "" && !shared.IsAnthropicSignature(reasoningSignature) {
+		reasoningContent = nil
+		reasoningSignature = nil
+	}
+	if decoded := shared.DecodeAnthropicSignature(reasoningSignature); decoded != nil {
+		reasoningSignature = decoded
+	}
+
+	if block := buildThinkingBlock(reasoningContent, reasoningSignature); block != nil {
 		blocks = append(blocks, *block)
 	}
 
@@ -848,7 +878,7 @@ func convertToLlmResponse(anthropicResp *Message, platformType PlatformType) *ll
 		Content:                  content,
 		ToolCalls:                toolCalls,
 		ReasoningContent:         thinkingText,
-		ReasoningSignature:       thinkingSignature,
+		ReasoningSignature:       shared.EncodeAnthropicSignature(thinkingSignature),
 		RedactedReasoningContent: redactedThinkingData,
 	}
 

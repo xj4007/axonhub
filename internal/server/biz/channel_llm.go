@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/looplj/axonhub/internal/ent"
 	"github.com/looplj/axonhub/internal/ent/channel"
@@ -19,8 +20,10 @@ import (
 	"github.com/looplj/axonhub/llm/transformer/anthropic/claudecode"
 	"github.com/looplj/axonhub/llm/transformer/antigravity"
 	"github.com/looplj/axonhub/llm/transformer/bailian"
+	"github.com/looplj/axonhub/llm/search/brave"
 	"github.com/looplj/axonhub/llm/transformer/deepseek"
 	"github.com/looplj/axonhub/llm/transformer/doubao"
+	"github.com/looplj/axonhub/llm/search/exa"
 	"github.com/looplj/axonhub/llm/transformer/gemini"
 	geminioai "github.com/looplj/axonhub/llm/transformer/gemini/openai"
 	"github.com/looplj/axonhub/llm/transformer/jina"
@@ -30,11 +33,25 @@ import (
 	"github.com/looplj/axonhub/llm/transformer/nanogpt"
 	"github.com/looplj/axonhub/llm/transformer/openai"
 	"github.com/looplj/axonhub/llm/transformer/openai/codex"
+	"github.com/looplj/axonhub/llm/transformer/openai/copilot"
 	"github.com/looplj/axonhub/llm/transformer/openai/responses"
 	"github.com/looplj/axonhub/llm/transformer/openrouter"
+	"github.com/looplj/axonhub/llm/search/tavily"
 	"github.com/looplj/axonhub/llm/transformer/xai"
 	"github.com/looplj/axonhub/llm/transformer/zai"
 )
+
+type AutoRefresher interface {
+	StartAutoRefresh(ctx context.Context, opts oauth.AutoRefreshOptions)
+	StopAutoRefresh()
+}
+
+func setupAutoRefresh(ch *Channel, refresher AutoRefresher, opts oauth.AutoRefreshOptions) {
+	ch.startTokenProvider = func() {
+		refresher.StartAutoRefresh(context.Background(), opts)
+	}
+	ch.stopTokenProvider = refresher.StopAutoRefresh
+}
 
 func (c *Channel) IsModelSupported(model string) bool {
 	entries := c.GetModelEntries()
@@ -144,6 +161,11 @@ func (svc *ChannelService) buildChannelWithTransformer(c *ent.Channel) (*Channel
 		if !c.Credentials.IsOAuth() && len(enabledKeys) == 0 {
 			return nil, fmt.Errorf("missing credentials: oauth or api key required for channel %s", c.Name)
 		}
+	case channel.TypeGithubCopilot:
+		// GitHub Copilot requires OAuth credentials with device flow (strict OAuth only)
+		if !c.Credentials.IsOAuth() {
+			return nil, fmt.Errorf("missing oauth credentials for channel %s", c.Name)
+		}
 	case channel.TypeAntigravity:
 		// Antigravity transformer currently consumes the single legacy APIKey field directly.
 		if strings.TrimSpace(c.Credentials.APIKey) == "" {
@@ -163,6 +185,42 @@ func (svc *ChannelService) buildChannelWithTransformer(c *ent.Channel) (*Channel
 	ch := buildChannel(c, httpClient)
 
 	switch c.Type {
+	case channel.TypeSearchTavily:
+		transformer, err := tavily.NewOutboundTransformerWithConfig(&tavily.Config{
+			BaseURL:        c.BaseURL,
+			APIKeyProvider: getAPIKeyProvider(ch),
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to create outbound transformer: %w", err)
+		}
+
+		ch.Outbound = transformer
+
+		return ch, nil
+	case channel.TypeSearchBrave:
+		transformer, err := brave.NewOutboundTransformerWithConfig(&brave.Config{
+			BaseURL:        c.BaseURL,
+			APIKeyProvider: getAPIKeyProvider(ch),
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to create outbound transformer: %w", err)
+		}
+
+		ch.Outbound = transformer
+
+		return ch, nil
+	case channel.TypeSearchExa:
+		transformer, err := exa.NewOutboundTransformerWithConfig(&exa.Config{
+			BaseURL:        c.BaseURL,
+			APIKeyProvider: getAPIKeyProvider(ch),
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to create outbound transformer: %w", err)
+		}
+
+		ch.Outbound = transformer
+
+		return ch, nil
 	case channel.TypeDoubao, channel.TypeVolcengine:
 		transformer, err := doubao.NewOutboundTransformerWithConfig(&doubao.Config{
 			BaseURL:        c.BaseURL,
@@ -329,10 +387,7 @@ func (svc *ChannelService) buildChannelWithTransformer(c *ent.Channel) (*Channel
 			}
 
 			ch.Outbound = transformer
-			ch.startTokenProvider = func() {
-				tokens.StartAutoRefresh(context.Background(), oauth.AutoRefreshOptions{})
-			}
-			ch.stopTokenProvider = tokens.StopAutoRefresh
+			setupAutoRefresh(ch, tokens, oauth.AutoRefreshOptions{})
 
 			return ch, nil
 		}
@@ -552,10 +607,7 @@ func (svc *ChannelService) buildChannelWithTransformer(c *ent.Channel) (*Channel
 			}
 
 			ch.Outbound = transformer
-			ch.startTokenProvider = func() {
-				p.StartAutoRefresh(context.Background(), oauth.AutoRefreshOptions{})
-			}
-			ch.stopTokenProvider = p.StopAutoRefresh
+			setupAutoRefresh(ch, p, oauth.AutoRefreshOptions{})
 
 			return ch, nil
 		}
@@ -573,6 +625,65 @@ func (svc *ChannelService) buildChannelWithTransformer(c *ent.Channel) (*Channel
 		}
 
 		ch.Outbound = transformer
+
+		return ch, nil
+	case channel.TypeGithubCopilot:
+		// GitHub Copilot requires OAuth credentials with device flow
+		if !c.Credentials.IsOAuth() {
+			return nil, fmt.Errorf("missing oauth credentials for channel %s", c.Name)
+		}
+
+		credsJSON := strings.TrimSpace(c.Credentials.APIKey)
+		if credsJSON == "" {
+			return nil, fmt.Errorf("github_copilot channel %s has no credentials", c.Name)
+		}
+
+		if c.Credentials.OAuth != nil {
+			o := c.Credentials.OAuth
+
+			creds, err := (&oauth.OAuthCredentials{
+				AccessToken:  o.AccessToken,
+				RefreshToken: o.RefreshToken,
+				ClientID:     o.ClientID,
+				ExpiresAt:    o.ExpiresAt,
+				TokenType:    o.TokenType,
+				Scopes:       o.Scopes,
+			}).ToJSON()
+			if err != nil {
+				return nil, fmt.Errorf("failed to encode github_copilot oauth credentials for channel %s: %w", c.Name, err)
+			}
+
+			credsJSON = creds
+		}
+
+		creds, err := oauth.ParseCredentialsJSON(credsJSON)
+		if err != nil {
+			return nil, fmt.Errorf("github_copilot channel %s has invalid credentials: %w", c.Name, err)
+		}
+
+		// Create CopilotTokenProvider with the token exchanger
+		p, err := copilot.NewTokenProvider(copilot.TokenProviderParams{
+			Credentials: creds,
+			HTTPClient:  httpClient,
+			OnRefreshed: svc.onTokenRefreshed(c),
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to create CopilotTokenProvider: %w", err)
+		}
+
+		// Create the Copilot outbound transformer with LiteLLM headers
+		transformer, err := copilot.NewOutboundTransformer(copilot.OutboundTransformerParams{
+			TokenProvider: p,
+			BaseURL:       c.BaseURL,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to create github_copilot outbound transformer: %w", err)
+		}
+		ch.Outbound = transformer
+		setupAutoRefresh(ch, p, oauth.AutoRefreshOptions{
+			Interval:      5 * time.Minute,
+			RefreshBefore: 5 * time.Minute,
+		})
 
 		return ch, nil
 	case channel.TypeOpenai, channel.TypeDeepinfra, channel.TypeMinimax, channel.TypeXiaomi,
@@ -652,10 +763,7 @@ func (svc *ChannelService) buildChannelWithTransformer(c *ent.Channel) (*Channel
 		ch.Outbound = transformer
 		tokens := transformer.GetTokenProvider()
 		if tokens != nil {
-			ch.startTokenProvider = func() {
-				tokens.StartAutoRefresh(context.Background(), oauth.AutoRefreshOptions{})
-			}
-			ch.stopTokenProvider = tokens.StopAutoRefresh
+			setupAutoRefresh(ch, tokens, oauth.AutoRefreshOptions{})
 		}
 
 		return ch, nil

@@ -472,6 +472,19 @@ func (r *mutationResolver) ApplyChannelOverrideTemplate(ctx context.Context, inp
 	}, nil
 }
 
+// SyncChannelModels is the resolver for the syncChannelModels field.
+func (r *mutationResolver) SyncChannelModels(ctx context.Context, channelID objects.GUID, pattern *string) (*SyncChannelModelsPayload, error) {
+	ch, err := r.channelService.SyncChannelModels(ctx, channelID.ID, pattern)
+	if err != nil {
+		return nil, err
+	}
+
+	return &SyncChannelModelsPayload{
+		ChannelID:       channelID,
+		SupportedModels: ch.SupportedModels,
+	}, nil
+}
+
 // AllChannelTags is the resolver for the allChannelTags field.
 func (r *queryResolver) AllChannelTags(ctx context.Context) ([]string, error) {
 	// Query all channels that are not archived

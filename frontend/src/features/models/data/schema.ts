@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { pageInfoSchema } from '@/gql/pagination';
 
-export const modelTypeSchema = z.enum(['chat', 'embedding', 'rerank']);
+export const modelTypeSchema = z.enum(['chat', 'embedding', 'rerank', 'image_generation', 'video_generation']);
 export type ModelType = z.infer<typeof modelTypeSchema>;
 
 export const modelStatusSchema = z.enum(['enabled', 'disabled', 'archived']);
@@ -141,6 +141,9 @@ export const createModelInputSchema = z.object({
 export type CreateModelInput = z.infer<typeof createModelInputSchema>;
 
 export const updateModelInputSchema = z.object({
+  developer: z.string().min(1, 'Developer is required').optional(),
+  modelID: z.string().min(1, 'Model ID is required').optional(),
+  type: modelTypeSchema.optional(),
   name: z.string().min(1, 'Name is required').optional(),
   icon: z.string().min(1, 'Icon is required').optional(),
   group: z.string().min(1, 'Group is required').optional(),

@@ -62,6 +62,11 @@ export const routeConfigs: RouteGroup[] = [
         mode: 'hidden',
       },
       {
+        path: '/agent-hosts',
+        requiredScopes: ['read_agents'],
+        mode: 'hidden',
+      },
+      {
         path: '/permission-demo',
         // 权限演示页面所有用户都可以访问
       },
@@ -74,6 +79,11 @@ export const routeConfigs: RouteGroup[] = [
       {
         path: '/project/api-keys',
         requiredScopes: ['read_api_keys'],
+        mode: 'hidden',
+      },
+      {
+        path: '/project/agents',
+        requiredScopes: ['read_agents'],
         mode: 'hidden',
       },
       {
@@ -114,6 +124,11 @@ export const routeConfigs: RouteGroup[] = [
       {
         path: '/project/playground',
         // Playground is accessible to all users
+      },
+      {
+        path: '/project/message-channels',
+        requiredScopes: ['read_agents'],
+        mode: 'hidden',
       },
     ],
   },

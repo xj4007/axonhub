@@ -14,6 +14,9 @@ export const apiFormatSchema = z.enum([
   'aisdk/datastream',
   'jina/rerank',
   'jina/embeddings',
+  'tavily/search',
+  'brave/search',
+  'exa/search',
 ]);
 
 export type ApiFormat = z.infer<typeof apiFormatSchema>;
@@ -59,10 +62,14 @@ export const channelTypeSchema = z.enum([
   'bailian',
   'jina',
   'github',
+  'github_copilot',
   'claudecode',
   'antigravity',
   'cerebras',
   'nanogpt',
+  'search_tavily',
+  'search_brave',
+  'search_exa',
 ]);
 export type ChannelType = z.infer<typeof channelTypeSchema>;
 
@@ -212,7 +219,7 @@ export const channelSchema = z.object({
   createdAt: z.string(),
   updatedAt: z.string(),
   type: channelTypeSchema,
-  baseURL: z.string(),
+  baseURL: z.string().optional().nullable(),
   name: z.string(),
   status: channelStatusSchema,
   policies: channelPoliciesSchema.optional().nullable(),
@@ -220,6 +227,7 @@ export const channelSchema = z.object({
   disabledAPIKeys: z.array(disabledAPIKeySchema).optional().nullable(),
   supportedModels: z.array(z.string()),
   autoSyncSupportedModels: z.boolean().default(false),
+  autoSyncModelPattern: z.string().optional().default(''),
   manualModels: z.array(z.string()).optional().default([]).nullable(),
   tags: z.array(z.string()).optional().default([]).nullable(),
   defaultTestModel: z.string(),
@@ -235,7 +243,7 @@ export type Channel = z.infer<typeof channelSchema>;
 export const pricingModeSchema = z.enum(['flat_fee', 'usage_per_unit', 'usage_tiered']);
 export type PricingMode = z.infer<typeof pricingModeSchema>;
 
-export const priceItemCodeSchema = z.enum(['prompt_tokens', 'completion_tokens', 'prompt_cached_tokens', 'prompt_write_cached_tokens']);
+export const priceItemCodeSchema = z.enum(['prompt_tokens', 'completion_tokens', 'prompt_cached_tokens', 'prompt_write_cached_tokens', 'requests']);
 export type PriceItemCode = z.infer<typeof priceItemCodeSchema>;
 
 export const priceTierSchema = z.object({
@@ -287,8 +295,57 @@ export const saveChannelModelPriceInputSchema = z.object({
   price: modelPriceSchema,
 });
 export type SaveChannelModelPriceInput = z.infer<typeof saveChannelModelPriceInputSchema>;
+// Helper function to validate OAuth credentials
+function validateOAuthCredentials(
+  type: string,
+  apiKey: string | undefined,
+  ctx: z.RefinementCtx
+) {
+  if (!apiKey) return;
+
+  // For GitHub Copilot, enforce JSON format
+  const isCopilot = type === 'github_copilot';
+  if (isCopilot && !apiKey.trim().startsWith('{')) {
+    ctx.addIssue({
+      code: 'custom' as const,
+      message: 'channels.dialogs.oauth.errors.copilotCredentialsInvalid',
+      path: ['credentials', 'apiKey'],
+    });
+    return;
+  }
+
+  // Only enforce JSON validation if it looks like JSON (starts with '{')
+  if (!apiKey.trim().startsWith('{')) return;
+
+  const issue = {
+    code: 'custom' as const,
+    message: 'channels.dialogs.oauth.errors.credentialsInvalid',
+    path: ['credentials', 'apiKey'],
+  };
+
+  let json: unknown;
+  try {
+    json = JSON.parse(apiKey);
+  } catch {
+    ctx.addIssue(issue);
+    return;
+  }
+
+  // GitHub Copilot only requires access_token, others may require refresh_token
+  const parsed = z
+    .object({
+      access_token: z.string().min(1),
+      refresh_token: isCopilot ? z.string().optional() : z.string().min(1),
+    })
+    .safeParse(json);
+
+  if (!parsed.success) {
+    ctx.addIssue(issue);
+  }
+}
 
 // Create Channel Input
+
 export const createChannelInputSchema = z
   .object({
     type: channelTypeSchema,
@@ -297,6 +354,7 @@ export const createChannelInputSchema = z
     policies: channelPoliciesSchema.optional(),
     supportedModels: z.array(z.string()).min(0, 'At least one supported model is required'),
     autoSyncSupportedModels: z.boolean().optional().default(false),
+    autoSyncModelPattern: z.string().optional().default(''),
     manualModels: z.array(z.string()).optional().nullable(),
     tags: z.array(z.string()).optional().default([]),
     defaultTestModel: z.string().min(1, 'Please select a default test model'),
@@ -318,9 +376,18 @@ export const createChannelInputSchema = z
     }),
   })
   .superRefine((data, ctx) => {
-    const isOAuthType = data.type === 'codex' || data.type === 'claudecode' || data.type === 'antigravity';
+    const isOAuthType = data.type === 'codex' || data.type === 'claudecode' || data.type === 'antigravity' || data.type === 'github_copilot';
     const hasApiKey = data.credentials.apiKey && data.credentials.apiKey.trim().length > 0;
     const hasApiKeys = data.credentials.apiKeys && data.credentials.apiKeys.some((k) => k.trim().length > 0);
+
+    // github_copilot requires credentials.apiKey (OAuth JSON with access_token)
+    if (data.type === 'github_copilot' && !hasApiKey) {
+      ctx.addIssue({
+        code: 'custom' as const,
+        message: 'channels.dialogs.oauth.errors.copilotCredentialsRequired',
+        path: ['credentials', 'apiKey'],
+      });
+    }
 
     // Validate that at least one credential type is provided
     if (!hasApiKey && !hasApiKeys && data.type !== 'anthropic_aws' && data.type !== 'anthropic_gcp') {
@@ -333,35 +400,8 @@ export const createChannelInputSchema = z
 
     // For OAuth types, validate the OAuth JSON format if apiKey is provided
     if (isOAuthType && hasApiKey) {
-      const apiKey = data.credentials.apiKey!;
-      if (apiKey.trim().startsWith('{')) {
-        const issue = {
-          code: 'custom' as const,
-          message: 'channels.dialogs.fields.supportedModels.codexOAuthCredentialsRequired',
-          path: ['credentials', 'apiKey'],
-        };
-
-        let json: unknown;
-        try {
-          json = JSON.parse(apiKey);
-        } catch {
-          ctx.addIssue(issue);
-          return;
-        }
-
-        const parsed = z
-          .object({
-            access_token: z.string().min(1),
-            refresh_token: z.string().min(1),
-          })
-          .safeParse(json);
-
-        if (!parsed.success) {
-          ctx.addIssue(issue);
-        }
-      }
+      validateOAuthCredentials(data.type, data.credentials.apiKey, ctx);
     }
-
     // 如果是 anthropic_gcp 类型，GCP 字段必填（精确到字段级报错）
     if (data.type === 'anthropic_gcp') {
       const gcp = data.credentials?.gcp;
@@ -399,6 +439,7 @@ export const updateChannelInputSchema = z
     policies: channelPoliciesSchema.optional(),
     supportedModels: z.array(z.string()).min(1, 'At least one supported model is required').optional(),
     autoSyncSupportedModels: z.boolean().optional(),
+    autoSyncModelPattern: z.string().optional(),
     manualModels: z.array(z.string()).optional().nullable(),
     tags: z.array(z.string()).optional(),
     defaultTestModel: z.string().min(1, 'Please select a default test model').optional(),
@@ -423,39 +464,47 @@ export const updateChannelInputSchema = z
     orderingWeight: z.number().optional(),
   })
   .superRefine((data, ctx) => {
-    const isOAuthType = data.type === 'codex' || data.type === 'claudecode' || data.type === 'antigravity';
+    const effectiveType = data.type;
+    const hasApiKey = data.credentials?.apiKey && data.credentials.apiKey.trim().length > 0;
 
-    if (isOAuthType) {
-      if (!data.credentials) return;
+    // For OAuth validation on updates: validate if type is OAuth, or if credentials.apiKey is provided
+    // (which indicates OAuth credentials are being set)
+    const isOAuthType = effectiveType === 'codex' || effectiveType === 'claudecode' || effectiveType === 'antigravity' || effectiveType === 'github_copilot';
 
-      const apiKey = data.credentials.apiKey;
-      // Only enforce JSON validation if it looks like JSON (starts with '{')
-      if (apiKey && apiKey.trim().startsWith('{')) {
-        const issue = {
-          code: 'custom' as const,
-          message: 'channels.dialogs.fields.supportedModels.codexOAuthCredentialsRequired',
-          path: ['credentials', 'apiKey'],
-        };
-
-        let json: unknown;
-        try {
-          json = JSON.parse(apiKey);
-        } catch {
-          ctx.addIssue(issue);
-          return;
-        }
-
-        const parsed = z
-          .object({
-            access_token: z.string().min(1),
-            refresh_token: z.string().min(1),
-          })
-          .safeParse(json);
-
-        if (!parsed.success) {
-          ctx.addIssue(issue);
-        }
+    // Derive type from parent context if not available
+    let derivedType = effectiveType;
+    if (!derivedType && hasApiKey) {
+      // Try to get type from parent context
+      const parent = ctx.parent;
+      if (parent && typeof parent === 'object' && 'type' in parent) {
+        derivedType = (parent as { type?: string }).type;
       }
+    }
+
+    // If we have an OAuth key but no type, check if it looks like Copilot credentials
+    const isCopilotKey = hasApiKey && data.credentials?.apiKey?.trim().startsWith('{');
+
+    if (isOAuthType || (derivedType === 'github_copilot') || isCopilotKey) {
+      if (isCopilotKey && !derivedType) {
+        try {
+          const parsed = JSON.parse(data.credentials.apiKey);
+          if (!parsed.access_token) {
+            ctx.addIssue({
+              code: 'custom',
+              message: 'channels.dialogs.oauth.errors.copilotCredentialsInvalid',
+              path: ['credentials', 'apiKey'],
+            });
+          }
+        } catch {
+          ctx.addIssue({
+            code: 'custom',
+            message: 'channels.dialogs.oauth.errors.copilotCredentialsInvalid',
+            path: ['credentials', 'apiKey'],
+          });
+        }
+        return;
+      }
+      validateOAuthCredentials(derivedType, data.credentials?.apiKey, ctx);
     }
 
     // 如果是 anthropic_gcp 类型且提供了 credentials，GCP 字段必填（字段级报错）
@@ -484,6 +533,7 @@ export const updateChannelInputSchema = z
       }
     }
   });
+
 export type UpdateChannelInput = z.infer<typeof updateChannelInputSchema>;
 
 // Channel Connection (for pagination)
