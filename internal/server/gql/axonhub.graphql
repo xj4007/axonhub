@@ -107,6 +107,7 @@ type ChannelSettings {
   billingHeaderValue: String
   simulateCache: Boolean
   simulateCacheMode: String
+  splitPromptBy8192: Boolean
 }
 
 enum CapabilityPolicy {
@@ -143,6 +144,7 @@ input ChannelSettingsInput {
   billingHeaderValue: String
   simulateCache: Boolean
   simulateCacheMode: String
+  splitPromptBy8192: Boolean
 }
 
 type ChannelCredentials {

@@ -16,14 +16,15 @@ import (
 	"github.com/looplj/axonhub/llm/httpclient"
 	"github.com/looplj/axonhub/llm/oauth"
 	"github.com/looplj/axonhub/llm/pipeline"
+	"github.com/looplj/axonhub/llm/search/brave"
+	"github.com/looplj/axonhub/llm/search/exa"
+	"github.com/looplj/axonhub/llm/search/tavily"
 	"github.com/looplj/axonhub/llm/transformer/anthropic"
 	"github.com/looplj/axonhub/llm/transformer/anthropic/claudecode"
 	"github.com/looplj/axonhub/llm/transformer/antigravity"
 	"github.com/looplj/axonhub/llm/transformer/bailian"
-	"github.com/looplj/axonhub/llm/search/brave"
 	"github.com/looplj/axonhub/llm/transformer/deepseek"
 	"github.com/looplj/axonhub/llm/transformer/doubao"
-	"github.com/looplj/axonhub/llm/search/exa"
 	"github.com/looplj/axonhub/llm/transformer/gemini"
 	geminioai "github.com/looplj/axonhub/llm/transformer/gemini/openai"
 	"github.com/looplj/axonhub/llm/transformer/jina"
@@ -36,7 +37,6 @@ import (
 	"github.com/looplj/axonhub/llm/transformer/openai/copilot"
 	"github.com/looplj/axonhub/llm/transformer/openai/responses"
 	"github.com/looplj/axonhub/llm/transformer/openrouter"
-	"github.com/looplj/axonhub/llm/search/tavily"
 	"github.com/looplj/axonhub/llm/transformer/xai"
 	"github.com/looplj/axonhub/llm/transformer/zai"
 )
@@ -336,10 +336,12 @@ func (svc *ChannelService) buildChannelWithTransformer(c *ent.Channel) (*Channel
 		var disguiseCliRequest *bool
 		var unifiedClientId string
 		var billingHeaderValue string
+		var splitPromptBy8192 *bool
 		if c.Settings != nil {
 			disguiseCliRequest = c.Settings.DisguiseCliRequest
 			unifiedClientId = c.Settings.UnifiedClientId
 			billingHeaderValue = c.Settings.BillingHeaderValue
+			splitPromptBy8192 = c.Settings.SplitPromptBy8192
 		}
 
 		// Check if using OAuth credentials first
@@ -381,6 +383,7 @@ func (svc *ChannelService) buildChannelWithTransformer(c *ent.Channel) (*Channel
 				DisguiseCliRequest: disguiseCliRequest,
 				UnifiedClientId:    unifiedClientId,
 				BillingHeaderValue: billingHeaderValue,
+				SplitPromptBy8192:  splitPromptBy8192,
 			})
 			if err != nil {
 				return nil, fmt.Errorf("failed to create claudecode outbound transformer: %w", err)
@@ -403,6 +406,7 @@ func (svc *ChannelService) buildChannelWithTransformer(c *ent.Channel) (*Channel
 			DisguiseCliRequest: disguiseCliRequest,
 			UnifiedClientId:    unifiedClientId,
 			BillingHeaderValue: billingHeaderValue,
+			SplitPromptBy8192:  splitPromptBy8192,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("failed to create claudecode outbound transformer: %w", err)

@@ -736,6 +736,7 @@ type ComplexityRoot struct {
 		Proxy                    func(childComplexity int) int
 		SimulateCache            func(childComplexity int) int
 		SimulateCacheMode        func(childComplexity int) int
+		SplitPromptBy8192        func(childComplexity int) int
 		TransformOptions         func(childComplexity int) int
 		UnifiedClientId          func(childComplexity int) int
 	}
@@ -5076,6 +5077,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.ChannelSettings.SimulateCacheMode(childComplexity), true
+	case "ChannelSettings.splitPromptBy8192":
+		if e.complexity.ChannelSettings.SplitPromptBy8192 == nil {
+			break
+		}
+
+		return e.complexity.ChannelSettings.SplitPromptBy8192(childComplexity), true
 	case "ChannelSettings.transformOptions":
 		if e.complexity.ChannelSettings.TransformOptions == nil {
 			break
@@ -26394,6 +26401,8 @@ func (ec *executionContext) fieldContext_Channel_settings(_ context.Context, fie
 				return ec.fieldContext_ChannelSettings_simulateCache(ctx, field)
 			case "simulateCacheMode":
 				return ec.fieldContext_ChannelSettings_simulateCacheMode(ctx, field)
+			case "splitPromptBy8192":
+				return ec.fieldContext_ChannelSettings_splitPromptBy8192(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type ChannelSettings", field.Name)
 		},
@@ -30343,6 +30352,35 @@ func (ec *executionContext) fieldContext_ChannelSettings_simulateCacheMode(_ con
 		IsResolver: false,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _ChannelSettings_splitPromptBy8192(ctx context.Context, field graphql.CollectedField, obj *objects.ChannelSettings) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_ChannelSettings_splitPromptBy8192,
+		func(ctx context.Context) (any, error) {
+			return obj.SplitPromptBy8192, nil
+		},
+		nil,
+		ec.marshalOBoolean2ᚖbool,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_ChannelSettings_splitPromptBy8192(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "ChannelSettings",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Boolean does not have child fields")
 		},
 	}
 	return fc, nil
@@ -76006,7 +76044,7 @@ func (ec *executionContext) unmarshalInputChannelSettingsInput(ctx context.Conte
 		asMap[k] = v
 	}
 
-	fieldsInOrder := [...]string{"extraModelPrefix", "modelMappings", "autoTrimedModelPrefixes", "hideOriginalModels", "hideMappedModels", "proxy", "transformOptions", "headerOverrideOperations", "bodyOverrideOperations", "disguiseCliRequest", "unifiedClientId", "billingHeaderValue", "simulateCache", "simulateCacheMode"}
+	fieldsInOrder := [...]string{"extraModelPrefix", "modelMappings", "autoTrimedModelPrefixes", "hideOriginalModels", "hideMappedModels", "proxy", "transformOptions", "headerOverrideOperations", "bodyOverrideOperations", "disguiseCliRequest", "unifiedClientId", "billingHeaderValue", "simulateCache", "simulateCacheMode", "splitPromptBy8192"}
 	for _, k := range fieldsInOrder {
 		v, ok := asMap[k]
 		if !ok {
@@ -76111,6 +76149,13 @@ func (ec *executionContext) unmarshalInputChannelSettingsInput(ctx context.Conte
 				return it, err
 			}
 			it.SimulateCacheMode = data
+		case "splitPromptBy8192":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("splitPromptBy8192"))
+			data, err := ec.unmarshalOBoolean2ᚖbool(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.SplitPromptBy8192 = data
 		}
 	}
 
@@ -107223,6 +107268,8 @@ func (ec *executionContext) _ChannelSettings(ctx context.Context, sel ast.Select
 			out.Values[i] = ec._ChannelSettings_simulateCache(ctx, field, obj)
 		case "simulateCacheMode":
 			out.Values[i] = ec._ChannelSettings_simulateCacheMode(ctx, field, obj)
+		case "splitPromptBy8192":
+			out.Values[i] = ec._ChannelSettings_splitPromptBy8192(ctx, field, obj)
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}

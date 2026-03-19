@@ -152,6 +152,8 @@ type ChannelSettings struct {
 	// Allowed values: ephemeral_5m_input_tokens / ephemeral_1h_input_tokens.
 	// Only effective when SimulateCache is true.
 	SimulateCacheMode string `json:"simulateCacheMode,omitempty"`
+
+	SplitPromptBy8192 *bool `json:"splitPromptBy8192,omitempty"`
 }
 
 // DisabledAPIKey 记录被禁用的 API key 信息（敏感，按 credentials 同级保护）

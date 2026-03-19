@@ -278,6 +278,9 @@ export function ChannelsActionDialog({ currentRow, duplicateFromRow, open, onOpe
       ? 'ephemeral_1h_input_tokens'
       : 'ephemeral_5m_input_tokens'
   );
+  const [splitPromptBy8192, setSplitPromptBy8192] = useState<boolean>(
+    initialRow?.settings?.splitPromptBy8192 ?? false
+  );
 
   const defaultBillingHeaderValue = 'x-anthropic-billing-header: cc_version=2.1.50.b97; cc_entrypoint=cli; cch=00000;';
 
@@ -400,6 +403,7 @@ export function ChannelsActionDialog({ currentRow, duplicateFromRow, open, onOpe
           ? 'ephemeral_1h_input_tokens'
           : 'ephemeral_5m_input_tokens'
       );
+      setSplitPromptBy8192(initialRow.settings?.splitPromptBy8192 ?? false);
     }
   }, [initialRow]);
 
@@ -930,11 +934,12 @@ export function ChannelsActionDialog({ currentRow, duplicateFromRow, open, onOpe
       if (isEdit && currentRow) {
         const disguiseSettings = isClaudeCodeType
           ? {
-              disguiseCliRequest: disguiseCliRequest ? (true as const) : undefined,
+              disguiseCliRequest,
               unifiedClientId: disguiseCliRequest ? (unifiedClientId || undefined) : undefined,
               billingHeaderValue: disguiseCliRequest ? (billingHeaderValue || undefined) : undefined,
               simulateCache: simulateCache,
               simulateCacheMode: simulateCacheMode,
+              splitPromptBy8192: splitPromptBy8192,
             }
           : {
               disguiseCliRequest: undefined,
@@ -942,6 +947,7 @@ export function ChannelsActionDialog({ currentRow, duplicateFromRow, open, onOpe
               billingHeaderValue: undefined,
               simulateCache: undefined,
               simulateCacheMode: undefined,
+              splitPromptBy8192: undefined,
             };
 
         const updateInput = {
@@ -984,11 +990,12 @@ export function ChannelsActionDialog({ currentRow, duplicateFromRow, open, onOpe
           proxy: proxyConfig,
           ...(isClaudeCodeType
             ? {
-                disguiseCliRequest: disguiseCliRequest ? true : undefined,
+                disguiseCliRequest,
                 unifiedClientId: disguiseCliRequest ? (unifiedClientId || undefined) : undefined,
                 billingHeaderValue: disguiseCliRequest ? (billingHeaderValue || undefined) : undefined,
                 simulateCache: simulateCache,
                 simulateCacheMode: simulateCacheMode,
+                splitPromptBy8192: splitPromptBy8192,
               }
             : {
                 disguiseCliRequest: undefined,
@@ -996,6 +1003,7 @@ export function ChannelsActionDialog({ currentRow, duplicateFromRow, open, onOpe
                 billingHeaderValue: undefined,
                 simulateCache: undefined,
                 simulateCacheMode: undefined,
+                splitPromptBy8192: undefined,
               }),
         });
 
@@ -1013,6 +1021,7 @@ export function ChannelsActionDialog({ currentRow, duplicateFromRow, open, onOpe
       setBillingHeaderValue('');
       setSimulateCache(false);
       setSimulateCacheMode('ephemeral_5m_input_tokens');
+      setSplitPromptBy8192(false);
       onOpenChange(false);
     } catch (_error) {
       void _error;
@@ -1405,6 +1414,7 @@ export function ChannelsActionDialog({ currentRow, duplicateFromRow, open, onOpe
                 ? 'ephemeral_1h_input_tokens'
                 : 'ephemeral_5m_input_tokens'
             );
+            setSplitPromptBy8192(initialRow?.settings?.splitPromptBy8192 ?? false);
             // Reset provider and API format state
             if (initialRow) {
               setSelectedProvider(getProviderFromChannelType(initialRow.type) || 'openai');
@@ -2250,6 +2260,7 @@ export function ChannelsActionDialog({ currentRow, duplicateFromRow, open, onOpe
                           <div className='space-y-3 md:col-span-6'>
                             <div className='flex items-center gap-2'>
                               <Checkbox
+                                data-testid='disguise-cli-request-checkbox'
                                 checked={disguiseCliRequest}
                                 onCheckedChange={(checked) => setDisguiseCliRequest(!!checked)}
                               />
@@ -2351,6 +2362,21 @@ export function ChannelsActionDialog({ currentRow, duplicateFromRow, open, onOpe
                                   </RadioGroup>
                                 </div>
                               )}
+                            </div>
+
+                            <div className='rounded-md border p-3 space-y-3'>
+                              <div className='flex items-center gap-2'>
+                                <Checkbox
+                                  checked={splitPromptBy8192}
+                                  onCheckedChange={(checked) => setSplitPromptBy8192(checked === true)}
+                                />
+                                <span className='text-xs font-medium'>
+                                  {t('channels.dialogs.fields.splitPromptBy8192.label')}
+                                </span>
+                              </div>
+                              <p className='text-muted-foreground text-xs'>
+                                {t('channels.dialogs.fields.splitPromptBy8192.description')}
+                              </p>
                             </div>
                           </div>
                         </FormItem>

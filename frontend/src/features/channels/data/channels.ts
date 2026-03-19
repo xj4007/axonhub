@@ -103,6 +103,7 @@ const CREATE_CHANNEL_MUTATION = `
           billingHeaderValue
           simulateCache
           simulateCacheMode
+          splitPromptBy8192
         }
       orderingWeight
       remark
@@ -200,6 +201,7 @@ const UPDATE_CHANNEL_MUTATION = `
           billingHeaderValue
           simulateCache
           simulateCacheMode
+          splitPromptBy8192
         }
       orderingWeight
       errorMessage
@@ -593,8 +595,9 @@ const QUERY_CHANNELS_QUERY = `
             disguiseCliRequest
             unifiedClientId
             billingHeaderValue
-          simulateCache
-          simulateCacheMode
+            simulateCache
+            simulateCacheMode
+            splitPromptBy8192
           }
           orderingWeight
           errorMessage

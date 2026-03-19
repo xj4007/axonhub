@@ -166,6 +166,7 @@ export const channelSettingsSchema = z.object({
     (value) => (value === '' ? undefined : value),
     z.enum(['ephemeral_5m_input_tokens', 'ephemeral_1h_input_tokens']).optional().nullable()
   ),
+  splitPromptBy8192: z.boolean().optional().nullable(),
 });
 export type ChannelSettings = z.infer<typeof channelSettingsSchema>;
 

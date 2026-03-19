@@ -633,6 +633,8 @@
   "channels.dialogs.fields.simulateCache.mode.label": "Cache Type",
   "channels.dialogs.fields.simulateCache.mode.ephemeral_5m_input_tokens": "ephemeral_5m_input_tokens",
   "channels.dialogs.fields.simulateCache.mode.ephemeral_1h_input_tokens": "ephemeral_1h_input_tokens",
+  "channels.dialogs.fields.splitPromptBy8192.label": "Split Prompt by 8192",
+  "channels.dialogs.fields.splitPromptBy8192.description": "Inject supplementary prompt guidance for 8192-character segmented output in Claude Code requests",
   "channels.messages.syncModelsSuccess": "Models synced successfully",
   "channels.messages.syncModelsError": "Failed to sync models: {{error}}"
 }

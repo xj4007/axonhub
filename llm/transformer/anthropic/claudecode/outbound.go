@@ -48,6 +48,7 @@ type Params struct {
 	DisguiseCliRequest *bool             // nil/false = no injection (pass through), true = detect+disguise
 	UnifiedClientId    string            // optional unified client ID (64-hex-char)
 	BillingHeaderValue string            // optional billing header value to inject as system[0]
+	SplitPromptBy8192  *bool
 }
 
 // NewOutboundTransformer creates a new ClaudeCodeTransformer with OAuth authentication.
@@ -77,6 +78,7 @@ func NewOutboundTransformer(params Params) (*ClaudeCodeTransformer, error) {
 		disguiseCliRequest: params.DisguiseCliRequest,
 		unifiedClientId:    params.UnifiedClientId,
 		billingHeaderValue: params.BillingHeaderValue,
+		splitPromptBy8192:  params.SplitPromptBy8192,
 	}, nil
 }
 
@@ -89,6 +91,7 @@ type ClaudeCodeTransformer struct {
 	disguiseCliRequest *bool
 	unifiedClientId    string
 	billingHeaderValue string
+	splitPromptBy8192  *bool
 }
 
 // TransformRequest overrides the base TransformRequest to add Claude Code specific modifications.
@@ -128,6 +131,9 @@ func (t *ClaudeCodeTransformer) TransformRequest(
 
 	// Apply structured transformations before serialization
 	reqCopy = *disableThinkingIfToolChoiceForcedStructured(&reqCopy)
+	if t.splitPromptBy8192 != nil && *t.splitPromptBy8192 {
+		reqCopy = *injectSupplementaryPromptBy8192Structured(&reqCopy)
+	}
 
 	// Compute whether to inject CLI disguise.
 	// Default: no injection. Only inject when disguise is explicitly enabled AND request is not from real CLI.

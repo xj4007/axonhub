@@ -102,6 +102,7 @@ export function mergeChannelSettingsForUpdate(
     billingHeaderValue: pick('billingHeaderValue', existing?.billingHeaderValue ?? undefined),
     simulateCache: pick('simulateCache', existing?.simulateCache ?? undefined),
     simulateCacheMode: pick('simulateCacheMode', existing?.simulateCacheMode ?? undefined),
+    splitPromptBy8192: pick('splitPromptBy8192', existing?.splitPromptBy8192 ?? undefined),
   };
 }
 

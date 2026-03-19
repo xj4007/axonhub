@@ -636,6 +636,8 @@
   "channels.dialogs.fields.simulateCache.mode.label": "缓存类型",
   "channels.dialogs.fields.simulateCache.mode.ephemeral_5m_input_tokens": "ephemeral_5m_input_tokens",
   "channels.dialogs.fields.simulateCache.mode.ephemeral_1h_input_tokens": "ephemeral_1h_input_tokens",
+  "channels.dialogs.fields.splitPromptBy8192.label": "8192 字符分段提示词",
+  "channels.dialogs.fields.splitPromptBy8192.description": "为 Claude Code 请求注入补充提示词，指导模型按每段不超过 8192 字符输出",
   "channels.messages.syncModelsSuccess": "模型同步成功",
   "channels.messages.syncModelsError": "同步模型失败：{{error}}"
 }

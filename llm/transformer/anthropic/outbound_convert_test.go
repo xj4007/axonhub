@@ -241,6 +241,31 @@ func TestOutboundTransformer_ToolArgsRepair(t *testing.T) {
 	})
 }
 
+func TestConvertToAnthropicSystemPrompt_WithMultipleContentSystemMessage(t *testing.T) {
+	first := "<system-reminder>first</system-reminder>"
+	second := "existing system text"
+	req := &llm.Request{
+		Messages: []llm.Message{
+			{
+				Role: "system",
+				Content: llm.MessageContent{
+					MultipleContent: []llm.MessageContentPart{
+						{Type: "text", Text: &first},
+						{Type: "text", Text: &second},
+					},
+				},
+			},
+		},
+	}
+
+	result := convertToAnthropicSystemPrompt(req)
+	require.NotNil(t, result)
+	require.Nil(t, result.Prompt)
+	require.Len(t, result.MultiplePrompts, 1)
+	require.Equal(t, "text", result.MultiplePrompts[0].Type)
+	require.Equal(t, first+second, result.MultiplePrompts[0].Text)
+}
+
 func TestConvertToChatCompletionResponse_EdgeCases(t *testing.T) {
 	tests := []struct {
 		name     string

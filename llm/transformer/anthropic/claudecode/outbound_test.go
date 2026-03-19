@@ -292,6 +292,120 @@ func TestClaudeCodeTransformer_TransformRequest(t *testing.T) {
 		thinking := gjson.GetBytes(httpReq.Body, "thinking")
 		assert.False(t, thinking.Exists())
 	})
+
+	t.Run("injects segmented supplementary prompt via smart insert", func(t *testing.T) {
+		enabled := true
+		transformer, err := NewOutboundTransformer(Params{
+			TokenProvider:     newMockTokenProvider("test-api-key"),
+			SplitPromptBy8192: &enabled,
+		})
+		require.NoError(t, err)
+
+		text := "<system-reminder>\nAs you answer the user's questions, you can use the following context:\n# claudeMd\n\nContents of C:/Users/demo/.claude/CLAUDE.md (user's private global instructions for all projects):\n\n# Existing\n</system-reminder>"
+		req := &llm.Request{
+			Model: "claude-sonnet-4-5",
+			Messages: []llm.Message{
+				{Role: "user", Content: llm.MessageContent{Content: &text}},
+			},
+			MaxTokens: int64Ptr(1024),
+		}
+
+		httpReq, err := transformer.TransformRequest(ctx, req)
+		require.NoError(t, err)
+
+		body := string(httpReq.Body)
+		assert.Contains(t, body, "{UNIVERSAL_PATH}/.claude/CLAUDE.md")
+		assert.Contains(t, body, "must not exceed 8192 tokens")
+	})
+
+	t.Run("injects segmented supplementary prompt via direct prepend", func(t *testing.T) {
+		enabled := true
+		transformer, err := NewOutboundTransformer(Params{
+			TokenProvider:     newMockTokenProvider("test-api-key"),
+			SplitPromptBy8192: &enabled,
+		})
+		require.NoError(t, err)
+
+		userText := "Please help me write a Python function"
+		req := &llm.Request{
+			Model: "claude-sonnet-4-5",
+			Messages: []llm.Message{
+				{Role: "user", Content: llm.MessageContent{Content: &userText}},
+			},
+			MaxTokens: int64Ptr(1024),
+		}
+
+		httpReq, err := transformer.TransformRequest(ctx, req)
+		require.NoError(t, err)
+
+		body := string(httpReq.Body)
+		assert.Contains(t, body, "<system-reminder>")
+		assert.Contains(t, body, "must not exceed 8192 tokens")
+		assert.Contains(t, body, "Please help me write a Python function")
+	})
+
+	t.Run("injects segmented supplementary prompt into first content block", func(t *testing.T) {
+		enabled := true
+		transformer, err := NewOutboundTransformer(Params{
+			TokenProvider:     newMockTokenProvider("test-api-key"),
+			SplitPromptBy8192: &enabled,
+		})
+		require.NoError(t, err)
+
+		first := "1. TASK: Identify runtime ports"
+		second := "Additional context"
+		req := &llm.Request{
+			Model: "claude-sonnet-4-5",
+			Messages: []llm.Message{
+				{
+					Role: "user",
+					Content: llm.MessageContent{MultipleContent: []llm.MessageContentPart{
+						{Type: "text", Text: &first},
+						{Type: "text", Text: &second},
+					}},
+				},
+			},
+			MaxTokens: int64Ptr(1024),
+		}
+
+		httpReq, err := transformer.TransformRequest(ctx, req)
+		require.NoError(t, err)
+
+		body := string(httpReq.Body)
+		assert.Contains(t, body, "must not exceed 8192 tokens")
+		assert.Contains(t, body, "1. TASK: Identify runtime ports")
+		assert.Contains(t, body, "Additional context")
+	})
+
+	t.Run("keeps segmented prompt in first anthropic message when system message exists", func(t *testing.T) {
+		enabled := true
+		transformer, err := NewOutboundTransformer(Params{
+			TokenProvider:     newMockTokenProvider("test-api-key"),
+			SplitPromptBy8192: &enabled,
+		})
+		require.NoError(t, err)
+
+		systemText := "You are Claude Code, Anthropic's official CLI for Claude."
+		userText := "1. TASK: Identify runtime ports"
+		req := &llm.Request{
+			Model: "claude-sonnet-4-5",
+			Messages: []llm.Message{
+				{Role: "system", Content: llm.MessageContent{Content: &systemText}},
+				{Role: "user", Content: llm.MessageContent{MultipleContent: []llm.MessageContentPart{{Type: "text", Text: &userText}}}},
+			},
+			MaxTokens: int64Ptr(1024),
+		}
+
+		httpReq, err := transformer.TransformRequest(ctx, req)
+		require.NoError(t, err)
+
+		firstMessageText := gjson.GetBytes(httpReq.Body, "messages.0.content.0.text").String()
+		assert.Contains(t, firstMessageText, "must not exceed 8192 tokens")
+		assert.Contains(t, firstMessageText, "1. TASK: Identify runtime ports")
+
+		system0 := gjson.GetBytes(httpReq.Body, "system.0.text").String()
+		assert.NotContains(t, system0, "must not exceed 8192 tokens")
+	})
 }
 
 func TestClaudeCodeTransformer_TransformResponse(t *testing.T) {
