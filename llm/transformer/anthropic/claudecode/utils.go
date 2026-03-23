@@ -1,13 +1,13 @@
 package claudecode
 
 import (
-	"crypto/rand"
-	"encoding/hex"
+	"context"
 	"fmt"
 	"regexp"
 	"strings"
 
 	"github.com/google/uuid"
+
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 
@@ -22,39 +22,25 @@ const (
 	segmentedOutputPrompt = "Please be aware that your single response content (Output) must not exceed 8192 tokens. Exceeding this limit will result in truncation and may cause tool call failures or other critical errors."
 )
 
-// userIDPattern matches Claude Code format: user_[64-hex]_account__session_[uuid-v4].
-var userIDPattern = regexp.MustCompile(`^user_[a-fA-F0-9]{64}_account__session_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
-
 var (
 	claudeMDPathRegex   = regexp.MustCompile(`(?:[A-Za-z]:[\\/](?:Users|users)[\\/][^\\/\n]+|/home/[^/\n]+|/Users/[^/\n]+)[\\/]?\.claude[\\/]+CLAUDE\.md`)
 	claudeMDAnchorRegex = regexp.MustCompile(`Contents of [^\n]*\.claude[\\/]+CLAUDE\.md \(user's private global instructions for all projects\):`)
 )
 
-// generateFakeUserID generates a fake user ID in Claude Code format.
-// Format: user_[64-hex-chars]_account__session_[UUID-v4].
-func generateFakeUserID() string {
-	hexBytes := make([]byte, 32)
-	_, _ = rand.Read(hexBytes)
-	hexPart := hex.EncodeToString(hexBytes)
-	uuidPart := uuid.New().String()
-
-	return "user_" + hexPart + "_account__session_" + uuidPart
-}
-
 // isValidUserID checks if a user ID matches Claude Code format.
 func isValidUserID(userID string) bool {
-	return userIDPattern.MatchString(userID)
+	return ParseUserID(userID) != nil
 }
 
 // injectFakeUserIDStructured generates and injects a fake user ID into the request metadata.
-func injectFakeUserIDStructured(llmReq *llm.Request) *llm.Request {
+func injectFakeUserIDStructured(ctx context.Context, llmReq llm.Request) llm.Request {
 	if llmReq.Metadata == nil {
 		llmReq.Metadata = make(map[string]string)
 	}
 
 	existingUserID := llmReq.Metadata["user_id"]
-	if existingUserID == "" || !isValidUserID(existingUserID) {
-		llmReq.Metadata["user_id"] = generateFakeUserID()
+	if existingUserID == "" || ParseUserID(existingUserID) == nil {
+		llmReq.Metadata["user_id"] = GenerateUserID(ctx)
 	}
 
 	return llmReq
@@ -575,8 +561,8 @@ func injectSegmentedPromptAsSystemReminder(msg *llm.Message) {
 		original := *msg.Content.Content
 		msg.Content.Content = nil
 		msg.Content.MultipleContent = []llm.MessageContentPart{
-			{Type: "text", Text: strPtr(block)},
-			{Type: "text", Text: strPtr(original)},
+			{Type: "text", Text: stringPtr(block)},
+			{Type: "text", Text: stringPtr(original)},
 		}
 		return
 	}
@@ -585,12 +571,12 @@ func injectSegmentedPromptAsSystemReminder(msg *llm.Message) {
 		first := &msg.Content.MultipleContent[0]
 		if first.Type == "text" && first.Text != nil {
 			updated := block + "\n\n" + *first.Text
-			first.Text = strPtr(updated)
+			first.Text = stringPtr(updated)
 			return
 		}
 	}
 
-	msg.Content.MultipleContent = append([]llm.MessageContentPart{{Type: "text", Text: strPtr(block)}}, msg.Content.MultipleContent...)
+	msg.Content.MultipleContent = append([]llm.MessageContentPart{{Type: "text", Text: stringPtr(block)}}, msg.Content.MultipleContent...)
 }
 
 func isSubAgentLikeRequest(req *llm.Request) bool {
@@ -627,6 +613,6 @@ func isSubAgentLikeRequest(req *llm.Request) bool {
 	return false
 }
 
-func strPtr(s string) *string {
+func stringPtr(s string) *string {
 	return &s
 }

@@ -27,6 +27,7 @@ func NewChatCompletionOrchestrator(
 	usageLogService *biz.UsageLogService,
 	promptService *biz.PromptService,
 	quotaService *biz.QuotaService,
+	promptProtectionRuleService *biz.PromptProtectionRuleService,
 ) *ChatCompletionOrchestrator {
 	connectionTracker := NewDefaultConnectionTracker(256)
 
@@ -54,6 +55,7 @@ func NewChatCompletionOrchestrator(
 		UsageLogService: usageLogService,
 		QuotaService:    quotaService,
 		PromptProvider:  promptService,
+		PromptProtecter: promptProtectionRuleService,
 		Middlewares: []pipeline.Middleware{
 			cc.StripBillingHeaderCCH(),
 			cc.PromptCacheDisguise(),
@@ -81,6 +83,7 @@ type ChatCompletionOrchestrator struct {
 	QuotaService    *biz.QuotaService
 	PromptProvider  PromptProvider
 	Middlewares     []pipeline.Middleware
+	PromptProtecter PromptProtecter
 	PipelineFactory *pipeline.Factory
 	ModelMapper     *ModelMapper
 
@@ -169,6 +172,7 @@ func (processor *ChatCompletionOrchestrator) Process(ctx context.Context, reques
 		UsageLogService:       processor.UsageLogService,
 		ChannelService:        processor.ChannelService,
 		PromptProvider:        processor.PromptProvider,
+		PromptProtecter:       processor.PromptProtecter,
 		RetryPolicyProvider:   processor.SystemService,
 		CandidateSelector:     processor.channelSelector,
 		LoadBalancer:          loadBalancer,
@@ -209,6 +213,7 @@ func (processor *ChatCompletionOrchestrator) Process(ctx context.Context, reques
 			applyModelMapping(inbound),
 			selectCandidates(inbound),
 			injectPrompts(inbound),
+			protectPrompts(inbound),
 			persistRequest(inbound),
 		)
 	}

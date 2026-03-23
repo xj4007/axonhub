@@ -2,6 +2,8 @@ package conf
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -15,22 +17,30 @@ import (
 )
 
 const (
-	FileName   = "config.yml"
+	FileName   = "config.yaml"
 	DefaultDir = ".axonclaw"
+	SecureDir  = ".axonclaw"
 )
 
+type BuiltinSkill struct {
+	Name    string `yaml:"name"`
+	Enabled bool   `yaml:"enabled"`
+	Order   int    `yaml:"order"`
+}
+
 type Config struct {
-	BaseURL                string        `yml:"base_url"`
-	APIKey                 string        `yml:"api_key"`
-	Name                   string        `yml:"name"`
-	PollInterval           time.Duration `yml:"poll_interval"`
-	HeartbeatInterval      time.Duration `yml:"heartbeat_interval"`
-	AutoSyncConfig         bool          `yml:"auto_sync_config"`
-	AutoSyncConfigInterval time.Duration `yml:"auto_sync_config_interval"`
-	ContextRecentMessages  int           `yml:"context_recent_messages"`
-	ContextSoftTokenLimit  int           `yml:"context_soft_token_limit"`
-	ContextSummaryMaxChars int           `yml:"context_summary_max_chars"`
-	Debug                  bool          `yml:"debug"`
+	BaseURL string `yaml:"base_url"`
+	//nolint:gosec // Checked.
+	APIKey                 string         `yaml:"api_key"`
+	PollInterval           time.Duration  `yaml:"poll_interval"`
+	HeartbeatInterval      time.Duration  `yaml:"heartbeat_interval"`
+	AutoSyncConfig         bool           `yaml:"auto_sync_config"`
+	AutoSyncConfigInterval time.Duration  `yaml:"auto_sync_config_interval"`
+	ContextRecentMessages  int            `yaml:"context_recent_messages"`
+	ContextSoftTokenLimit  int            `yaml:"context_soft_token_limit"`
+	ContextSummaryMaxChars int            `yaml:"context_summary_max_chars"`
+	Debug                  bool           `yaml:"debug"`
+	BuiltinSkills          []BuiltinSkill `yaml:"builtin_skills"`
 }
 
 func DefaultConfig() Config {
@@ -44,20 +54,24 @@ func DefaultConfig() Config {
 	}
 }
 
-func LoadOrSaveConfig(baseURL, apiKey, name string) (Config, error) {
+func LoadOrSaveConfig(baseURL, apiKey string) (Config, error) {
 	cfg := DefaultConfig()
+
+	searchPath, err := ConfigDir()
+	if err != nil {
+		return Config{}, fmt.Errorf("resolve config directory: %w", err)
+	}
 	loader := axonconf.NewViperLoader[Config](axonconf.ViperLoaderOptions{
 		ConfigName:     "config",
-		ConfigType:     "yml",
-		SearchPaths:    []string{DefaultDir},
+		ConfigType:     "yaml",
+		SearchPaths:    []string{searchPath},
 		AllowMissing:   true,
 		EnvPrefix:      "AXONCLAW",
 		EnvKeyReplacer: strings.NewReplacer(".", "_"),
-		UnmarshalTag:   "yml",
+		UnmarshalTag:   "yaml",
 		SetDefaults: func(v *viper.Viper) {
 			v.SetDefault("base_url", "")
 			v.SetDefault("api_key", "")
-			v.SetDefault("name", "")
 			v.SetDefault("poll_interval", "5s")
 			v.SetDefault("heartbeat_interval", "1m")
 			v.SetDefault("auto_sync_config", false)
@@ -77,9 +91,6 @@ func LoadOrSaveConfig(baseURL, apiKey, name string) (Config, error) {
 	}
 	if res.Value.APIKey != "" {
 		cfg.APIKey = res.Value.APIKey
-	}
-	if res.Value.Name != "" {
-		cfg.Name = res.Value.Name
 	}
 	if res.Value.PollInterval > 0 {
 		cfg.PollInterval = res.Value.PollInterval
@@ -109,7 +120,6 @@ func LoadOrSaveConfig(baseURL, apiKey, name string) (Config, error) {
 
 	finalBaseURL := strings.TrimSpace(baseURL)
 	finalAPIKey := strings.TrimSpace(apiKey)
-	finalName := strings.TrimSpace(name)
 
 	needSave := false
 	if finalBaseURL != "" {
@@ -118,10 +128,6 @@ func LoadOrSaveConfig(baseURL, apiKey, name string) (Config, error) {
 	}
 	if finalAPIKey != "" {
 		cfg.APIKey = finalAPIKey
-		needSave = true
-	}
-	if finalName != "" {
-		cfg.Name = finalName
 		needSave = true
 	}
 
@@ -147,7 +153,7 @@ func newMissingConfigError(baseURL, apiKey string) error {
 		missing = append(missing, "api_key")
 	}
 
-	path := filepath.Join(DefaultDir, FileName)
+	path := DefaultPath()
 	example := strings.TrimSpace(`
 base_url: https://your-axonhub-server.com
 api_key: your-agent-api-key
@@ -155,24 +161,28 @@ api_key: your-agent-api-key
 
 	if _, err := os.Stat(path); err != nil && os.IsNotExist(err) {
 		return fmt.Errorf(
-			"missing required settings: %s (create %s in .axonclaw directory, or pass flags -base-url/-api-key)\n\n%s",
+			"missing required settings: %s (set them with 'axonclaw conf set', or pass flags -base-url/-api-key)\n\n%s",
 			strings.Join(missing, ", "),
-			FileName,
 			example,
 		)
 	}
-	return fmt.Errorf("missing required settings: %s (config: %s)", strings.Join(missing, ", "), path)
+
+	return fmt.Errorf("missing required settings: %s (update them with 'axonclaw conf set' or flags -base-url/-api-key)", strings.Join(missing, ", "))
 }
 
 func SaveConfig(cfg Config) error {
-	if err := os.MkdirAll(DefaultDir, 0o755); err != nil {
+	dir, err := ConfigDir()
+	if err != nil {
+		return fmt.Errorf("resolve config directory: %w", err)
+	}
+
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return fmt.Errorf("create config directory: %w", err)
 	}
 
-	path := filepath.Join(DefaultDir, FileName)
-	var existing Config
-	if data, err := os.ReadFile(path); err == nil {
-		yaml.Unmarshal(data, &existing)
+	existing, err := LoadConfig()
+	if err != nil {
+		return fmt.Errorf("load config: %w", err)
 	}
 
 	if cfg.BaseURL != "" {
@@ -181,34 +191,79 @@ func SaveConfig(cfg Config) error {
 	if cfg.APIKey != "" {
 		existing.APIKey = cfg.APIKey
 	}
-	if cfg.Name != "" {
-		existing.Name = cfg.Name
-	}
 
 	data, err := yaml.Marshal(&existing)
 	if err != nil {
 		return fmt.Errorf("marshal config: %w", err)
 	}
+
+	path := filepath.Join(dir, FileName)
+
 	return os.WriteFile(path, data, 0o600)
 }
 
+func SaveBuiltinSkills(skills []BuiltinSkill) error {
+	dir, err := ConfigDir()
+	if err != nil {
+		return fmt.Errorf("resolve config directory: %w", err)
+	}
+
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return fmt.Errorf("create config directory: %w", err)
+	}
+
+	existing, err := LoadConfig()
+	if err != nil {
+		return fmt.Errorf("load config: %w", err)
+	}
+
+	existing.BuiltinSkills = skills
+
+	//nolint:gosec // Cheked.
+	data, err := yaml.Marshal(&existing)
+	if err != nil {
+		return fmt.Errorf("marshal config: %w", err)
+	}
+
+	path := filepath.Join(dir, FileName)
+
+	return os.WriteFile(path, data, 0o600)
+}
+
+func LoadBuiltinSkills() ([]BuiltinSkill, error) {
+	cfg, err := LoadConfig()
+	if err != nil {
+		return nil, fmt.Errorf("load config: %w", err)
+	}
+
+	return cfg.BuiltinSkills, nil
+}
+
 func DefaultPath() string {
-	return filepath.Join(DefaultDir, FileName)
+	dir, err := ConfigDir()
+	if err != nil {
+		return filepath.Join(DefaultDir, FileName)
+	}
+
+	return filepath.Join(dir, FileName)
 }
 
 func LoadConfig() (Config, error) {
+	searchPath, err := ConfigDir()
+	if err != nil {
+		return Config{}, fmt.Errorf("resolve config directory: %w", err)
+	}
 	loader := axonconf.NewViperLoader[Config](axonconf.ViperLoaderOptions{
 		ConfigName:     "config",
-		ConfigType:     "yml",
-		SearchPaths:    []string{DefaultDir},
+		ConfigType:     "yaml",
+		SearchPaths:    []string{searchPath},
 		AllowMissing:   true,
 		EnvPrefix:      "AXONCLAW",
 		EnvKeyReplacer: strings.NewReplacer(".", "_"),
-		UnmarshalTag:   "yml",
+		UnmarshalTag:   "yaml",
 		SetDefaults: func(v *viper.Viper) {
 			v.SetDefault("base_url", "")
 			v.SetDefault("api_key", "")
-			v.SetDefault("name", "")
 			v.SetDefault("poll_interval", "5s")
 			v.SetDefault("heartbeat_interval", "1m")
 			v.SetDefault("auto_sync_config", false)
@@ -233,4 +288,44 @@ func GetYAMLString(key string) (string, bool, error) {
 
 func SetYAMLKey(key string, value string) error {
 	return axonconf.SetYAMLKey(DefaultPath(), key, value)
+}
+
+func ConfigDir() (string, error) {
+	return secureWorkspaceDir()
+}
+
+func PolicyDir() (string, error) {
+	return secureWorkspaceDir()
+}
+
+func PermissionDir() (string, error) {
+	return mustSecureDirFallback(), nil
+}
+
+func secureWorkspaceDir() (string, error) {
+	wd, err := os.Getwd()
+	if err != nil {
+		return "", fmt.Errorf("get working directory: %w", err)
+	}
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("get home directory: %w", err)
+	}
+
+	return filepath.Join(home, SecureDir, workspaceHash(wd)), nil
+}
+
+func mustSecureDirFallback() string {
+	dir, err := secureWorkspaceDir()
+	if err != nil {
+		return filepath.Join(DefaultDir)
+	}
+
+	return dir
+}
+
+func workspaceHash(wd string) string {
+	sum := sha256.Sum256([]byte(filepath.Clean(wd)))
+	return hex.EncodeToString(sum[:])[:32]
 }

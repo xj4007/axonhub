@@ -1,6 +1,7 @@
 package claudecode
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -23,14 +24,14 @@ const (
 // claudeCodeHeaders contains all headers to set for Claude Code requests.
 // Each entry is a [name, value] pair.
 var claudeCodeHeaders = [][]string{
-	{"Anthropic-Beta", "claude-code-20250219,oauth-2025-04-20,interleaved-thinking-2025-05-14,fine-grained-tool-streaming-2025-05-14"},
-	{"Anthropic-Version", "2023-06-01"},
-	{"Anthropic-Dangerous-Direct-Browser-Access", "true"},
-	{"X-App", "cli"},
+	{"Anthropic-Beta", ClaudeCodeBetaHeader},
+	{"Anthropic-Version", ClaudeCodeVersionHeader},
+	{"Anthropic-Dangerous-Direct-Browser-Access", ClaudeCodeBrowserAccessHeader},
+	{"X-App", ClaudeCodeAppHeader},
 	{"X-Stainless-Helper-Method", "stream"},
 	{"X-Stainless-Retry-Count", "0"},
 	{"X-Stainless-Runtime-Version", "v24.3.0"},
-	{"X-Stainless-Package-Version", "0.55.1"},
+	{"X-Stainless-Package-Version", "0.74.0"},
 	{"X-Stainless-Runtime", "node"},
 	{"X-Stainless-Lang", "js"},
 	{"X-Stainless-Arch", "arm64"},
@@ -45,9 +46,10 @@ type Params struct {
 	TokenProvider      oauth.TokenGetter // OAuth token provider (required)
 	BaseURL            string            // Base URL for the Anthropic API (optional)
 	IsOfficial         bool              // Whether the channel uses official OAuth credentials
-	DisguiseCliRequest *bool             // nil/false = no injection (pass through), true = detect+disguise
-	UnifiedClientId    string            // optional unified client ID (64-hex-char)
-	BillingHeaderValue string            // optional billing header value to inject as system[0]
+	AccountIdentity    string
+	DisguiseCliRequest *bool  // nil/false = no injection (pass through), true = detect+disguise
+	UnifiedClientId    string // optional unified client ID (64-hex-char)
+	BillingHeaderValue string // optional billing header value to inject as system[0]
 	SplitPromptBy8192  *bool
 }
 
@@ -64,8 +66,9 @@ func NewOutboundTransformer(params Params) (*ClaudeCodeTransformer, error) {
 
 	// Create base transformer with minimal config
 	outbound, err := anthropic.NewOutboundTransformerWithConfig(&anthropic.Config{
-		Type:    anthropic.PlatformClaudeCode,
-		BaseURL: baseURL,
+		Type:            anthropic.PlatformClaudeCode,
+		BaseURL:         baseURL,
+		AccountIdentity: params.AccountIdentity,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create outbound transformer: %w", err)
@@ -136,13 +139,17 @@ func (t *ClaudeCodeTransformer) TransformRequest(
 	}
 
 	// Compute whether to inject CLI disguise.
-	// Default: no injection. Only inject when disguise is explicitly enabled AND request is not from real CLI.
-	shouldInject := false
-	if t.disguiseCliRequest != nil && *t.disguiseCliRequest {
-		if isRealCliRequest(rawUA, &reqCopy) {
-			keepClientUA = true
+	shouldInject := t.disguiseCliRequest == nil
+	if t.disguiseCliRequest != nil {
+		if *t.disguiseCliRequest {
+			if isRealCliRequest(rawUA, &reqCopy) {
+				keepClientUA = true
+				shouldInject = false
+			} else {
+				shouldInject = true
+			}
 		} else {
-			shouldInject = true
+			shouldInject = false
 		}
 	}
 
@@ -157,9 +164,12 @@ func (t *ClaudeCodeTransformer) TransformRequest(
 		if t.unifiedClientId != "" {
 			reqCopy = *injectOrReplaceUserID(&reqCopy, t.unifiedClientId)
 		} else {
-			reqCopy = *injectFakeUserIDStructured(&reqCopy)
+			reqCopy = injectFakeUserIDStructured(ctx, reqCopy)
 		}
 	}
+
+	reqCopy = injectFakeUserIDStructured(ctx, reqCopy)
+
 	if t.isOfficial && !keepClientUA {
 		reqCopy = *applyClaudeToolPrefixStructured(&reqCopy, toolPrefix)
 	}
@@ -245,6 +255,11 @@ func (t *ClaudeCodeTransformer) TransformRequest(
 	httpReq.Auth = &httpclient.AuthConfig{
 		Type:   httpclient.AuthTypeBearer,
 		APIKey: apiKey,
+	}
+
+	if len(httpReq.Body) > 0 {
+		httpReq.Body = bytes.ReplaceAll(httpReq.Body, []byte(`\u003c`), []byte("<"))
+		httpReq.Body = bytes.ReplaceAll(httpReq.Body, []byte(`\u003e`), []byte(">"))
 	}
 
 	return httpReq, nil

@@ -1,19 +1,15 @@
-import { useCallback, useState, memo } from 'react';
+import { useCallback, memo } from 'react';
 import { format } from 'date-fns';
 import { DotsHorizontalIcon } from '@radix-ui/react-icons';
 import { ColumnDef, Row, Table } from '@tanstack/react-table';
 import {
-  IconEdit,
-  IconTrash,
-  IconCheck,
-  IconBan,
+  IconArchive,
   IconServer,
   IconContainer,
   IconDeviceDesktop,
 } from '@tabler/icons-react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
-import { usePermissions } from '@/hooks/usePermissions';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -21,70 +17,35 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Switch } from '@/components/ui/switch';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { DataTableColumnHeader } from '@/components/data-table-column-header';
-import { useAgentHosts } from '../context/agent-hosts-context';
 import { useUpdateAgentHostStatus } from '../data/agent-hosts';
 import { AgentHost, AgentHostType, AgentHostStatus } from '../data/schema';
-
-// Status Switch Cell Component to handle status toggle
-const StatusSwitchCell = memo(({ row }: { row: Row<AgentHost> }) => {
-  const agentHost = row.original;
-  const updateStatus = useUpdateAgentHostStatus();
-
-  const isActive = agentHost.status === 'active';
-
-  const handleSwitchChange = useCallback(async () => {
-    const newStatus: AgentHostStatus = isActive ? 'inactive' : 'active';
-    try {
-      await updateStatus.mutateAsync({
-        id: agentHost.id,
-        status: newStatus,
-      });
-    } catch (_error) {}
-  }, [agentHost.id, isActive, updateStatus]);
-
-  return (
-    <div className="flex justify-center">
-      <Switch
-        checked={isActive}
-        onCheckedChange={handleSwitchChange}
-        disabled={updateStatus.isPending}
-        data-testid="agent-host-status-switch"
-      />
-    </div>
-  );
-});
-
-StatusSwitchCell.displayName = 'StatusSwitchCell';
 
 // Action Cell Component
 const ActionCell = memo(({ row }: { row: Row<AgentHost> }) => {
   const { t } = useTranslation();
   const agentHost = row.original;
-  const { setOpen, setCurrentRow } = useAgentHosts();
-  const { agentHostsPermissions } = usePermissions();
+  const updateStatus = useUpdateAgentHostStatus();
+  const canArchive = agentHost.status !== 'inactive';
 
-  const isLocal = agentHost.type === 'local';
+  const handleArchive = useCallback(async () => {
+    try {
+      await updateStatus.mutateAsync({
+        id: agentHost.id,
+        status: 'inactive',
+      });
+    } catch (_error) {}
+  }, [agentHost.id, updateStatus]);
 
-  const handleEdit = useCallback(() => {
-    setCurrentRow(agentHost);
-    setOpen('edit');
-  }, [agentHost, setCurrentRow, setOpen]);
-
-  if (isLocal) {
+  if (!canArchive) {
     return null;
   }
 
   return (
-    <div className="flex items-center justify-center gap-1">
-      <Button size="sm" variant="outline" className="h-8 w-8 p-0" onClick={handleEdit}>
-        <IconEdit className="h-3 w-3" />
-      </Button>
+    <div className="flex items-center justify-center">
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button size="sm" variant="outline" className="h-8 w-8 p-0" data-testid="row-actions">
@@ -92,15 +53,9 @@ const ActionCell = memo(({ row }: { row: Row<AgentHost> }) => {
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-[160px]">
-          <DropdownMenuItem
-            onClick={() => {
-              setCurrentRow(agentHost);
-              setOpen('delete');
-            }}
-            className="text-red-500!"
-          >
-            <IconTrash size={16} className="mr-2" />
-            {t('common.buttons.delete')}
+          <DropdownMenuItem onClick={handleArchive} disabled={updateStatus.isPending}>
+            <IconArchive size={16} className="mr-2" />
+            {t('common.buttons.archive')}
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
@@ -206,7 +161,32 @@ const UserCell = memo(({ row }: { row: Row<AgentHost> }) => {
 
 UserCell.displayName = 'UserCell';
 
-// Created At Cell Component
+const DirectoryCell = memo(({ row }: { row: Row<AgentHost> }) => {
+  const agentHost = row.original;
+  const directory = agentHost.directory;
+
+  if (agentHost.type === 'docker' || !directory) {
+    return (
+      <div className="flex justify-center">
+        <span className="text-muted-foreground text-xs">-</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex justify-center">
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <code className="bg-muted max-w-48 truncate rounded px-2 py-0.5 font-mono text-xs">{directory}</code>
+        </TooltipTrigger>
+        <TooltipContent>{directory}</TooltipContent>
+      </Tooltip>
+    </div>
+  );
+});
+
+DirectoryCell.displayName = 'DirectoryCell';
+
 const CreatedAtCell = memo(({ row }: { row: Row<AgentHost> }) => {
   const raw = row.getValue('createdAt') as unknown;
   const date = raw instanceof Date ? raw : new Date(raw as string);
@@ -326,6 +306,17 @@ export const createColumns = (
         <DataTableColumnHeader column={column} title={t('agentHosts.columns.user')} className="justify-center" />
       ),
       cell: UserCell,
+      meta: {
+        className: 'text-center',
+      },
+      enableSorting: false,
+    },
+    {
+      accessorKey: 'directory',
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title={t('agentHosts.columns.directory')} className="justify-center" />
+      ),
+      cell: DirectoryCell,
       meta: {
         className: 'text-center',
       },

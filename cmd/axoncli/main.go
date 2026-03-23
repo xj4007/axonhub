@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	_ "embed"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -14,28 +13,34 @@ import (
 	"text/template"
 	"time"
 
-	tea "charm.land/bubbletea/v2"
 	"github.com/google/uuid"
 	"github.com/looplj/axonhub/axon/agent"
 	"github.com/looplj/axonhub/axon/bus"
-	axonconf "github.com/looplj/axonhub/axon/conf"
-	axoncontext "github.com/looplj/axonhub/axon/context"
+	"github.com/looplj/axonhub/axon/mcp"
 	"github.com/looplj/axonhub/axon/permission"
 	"github.com/looplj/axonhub/axon/permission/approval"
 	"github.com/looplj/axonhub/axon/permission/grant"
 	"github.com/looplj/axonhub/axon/permission/policy"
 	"github.com/looplj/axonhub/axon/pkg/search"
 	"github.com/looplj/axonhub/axon/provider/reloadable"
+	"github.com/looplj/axonhub/axon/subagent"
 	"github.com/looplj/axonhub/axon/thread"
 	"github.com/looplj/axonhub/axon/tools"
+	"github.com/looplj/skills/skillscmd"
+	"github.com/spf13/cobra"
+
+	_ "embed"
+
+	tea "charm.land/bubbletea/v2"
+	axonconf "github.com/looplj/axonhub/axon/conf"
+	axoncontext "github.com/looplj/axonhub/axon/context"
+	lumberjack "gopkg.in/natefinch/lumberjack.v2"
+
 	"github.com/looplj/axonhub/cmd/axoncli/cmds"
 	"github.com/looplj/axonhub/cmd/axoncli/conf"
 	cliruntime "github.com/looplj/axonhub/cmd/axoncli/runtime"
 	clitools "github.com/looplj/axonhub/cmd/axoncli/tools"
 	"github.com/looplj/axonhub/cmd/axoncli/tui"
-	"github.com/looplj/skills/skillscmd"
-	"github.com/spf13/cobra"
-	lumberjack "gopkg.in/natefinch/lumberjack.v2"
 )
 
 //go:embed system.md
@@ -139,6 +144,11 @@ func main() {
 		Stdout: os.Stdout,
 		Stderr: os.Stderr,
 	}))
+	rootCmd.AddCommand(cmds.NewMCPCommand(cmds.MCPOptions{
+		Dir:    configDir,
+		Stdout: os.Stdout,
+		Stderr: os.Stderr,
+	}))
 
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
@@ -217,13 +227,55 @@ func runTUI(cfg conf.Config, configDir string, workspaceDir string, debug bool) 
 	a.RegisterTool(tools.NewAgentTool(tools.NewReadTool(workspaceDir, false)))
 	a.RegisterTool(tools.NewAgentTool(tools.NewWriteTool(workspaceDir, false)))
 	a.RegisterTool(tools.NewAgentTool(tools.NewEditTool(workspaceDir, false)))
-	a.RegisterTool(tools.NewAgentTool(tools.NewBashTool(workspaceDir, false)))
+	a.RegisterTool(tools.NewAgentTool(tools.NewBashTool(workspaceDir, false, true)))
 	a.RegisterTool(tools.NewAgentTool(tools.NewGrepTool(workspaceDir, false)))
 	a.RegisterTool(tools.NewAgentTool(tools.NewGlobTool(workspaceDir, false)))
-	a.RegisterTool(tools.NewAgentTool(tools.NewSkillTool(filepath.Join(workspaceDir, "skills"), filepath.Join(configDir, "skills"))))
+
+	skillMgr := tools.NewSkillManager(tools.SkillManagerOptions{
+		Dirs: []string{
+			filepath.Join(workspaceDir, "skills"),
+			filepath.Join(configDir, "skills"),
+		},
+	})
+	a.RegisterTool(tools.NewAgentTool(tools.NewSkillTool(skillMgr)))
 	a.RegisterTool(tools.NewAgentTool(tools.NewWebSearchTool(search.NewDuckDuckGoProvider())))
 	a.RegisterTool(tools.NewAgentTool(tools.NewWebFetchTool()))
 	a.RegisterTool(tools.NewAgentTool(clitools.NewAxonHelpTool()))
+
+	agentDir := filepath.Join(workspaceDir, ".agent")
+
+	subagentDir := filepath.Join(agentDir, "subagents")
+
+	subagentMgr := subagent.NewManagerFromPath(subagentDir)
+	if err := subagentMgr.Load(); err != nil {
+		logger.Warn("failed to load subagent definitions", "error", err, "path", subagentDir)
+	}
+
+	a.RegisterTool(tools.NewAgentTool(subagent.NewTool(subagent.ToolOptions{
+		Manager:     subagentMgr,
+		Provider:    provider,
+		ToolSource:  &agentToolSource{agent: a},
+		Model:       cfg.Model,
+		Middlewares: a.Middlewares(),
+		Logger:      logger,
+	})))
+
+	mcpMgr := mcp.NewManager(mcp.ManagerOptions{
+		Logger:    logger,
+		ConfigDir: configDir,
+	})
+	mcpMgr.RegisterTools(a, workspaceDir, map[string]struct{}{
+		"Read":      {},
+		"Write":     {},
+		"Edit":      {},
+		"Bash":      {},
+		"Grep":      {},
+		"Glob":      {},
+		"Skill":     {},
+		"WebSearch": {},
+		"WebFetch":  {},
+		"AxonHelp":  {},
+	})
 
 	store := axonconf.NewStore(cfg)
 	loader := axonconf.NewViperLoader[conf.Config](axonconf.ViperLoaderOptions{
@@ -337,4 +389,16 @@ func mustGetwd() string {
 		os.Exit(1)
 	}
 	return dir
+}
+
+type agentToolSource struct {
+	agent *agent.Agent
+}
+
+func (s *agentToolSource) AvailableTools() []agent.Tool {
+	return s.agent.RegisteredTools()
+}
+
+func (s *agentToolSource) Middlewares() []agent.Middleware {
+	return s.agent.Middlewares()
 }

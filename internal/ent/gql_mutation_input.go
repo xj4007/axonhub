@@ -15,6 +15,7 @@ import (
 	"github.com/looplj/axonhub/internal/ent/model"
 	"github.com/looplj/axonhub/internal/ent/project"
 	"github.com/looplj/axonhub/internal/ent/prompt"
+	"github.com/looplj/axonhub/internal/ent/promptprotectionrule"
 	"github.com/looplj/axonhub/internal/ent/promptversion"
 	"github.com/looplj/axonhub/internal/ent/request"
 	"github.com/looplj/axonhub/internal/ent/role"
@@ -97,6 +98,7 @@ type CreateAgentHostInput struct {
 	AuthMethod    *agenthost.AuthMethod
 	Password      *string
 	SSHPrivateKey *string
+	Directory     *string
 }
 
 // Mutate applies the CreateAgentHostInput on the AgentHostMutation builder.
@@ -123,6 +125,9 @@ func (i *CreateAgentHostInput) Mutate(m *AgentHostMutation) {
 	if v := i.SSHPrivateKey; v != nil {
 		m.SetSSHPrivateKey(*v)
 	}
+	if v := i.Directory; v != nil {
+		m.SetDirectory(*v)
+	}
 }
 
 // SetInput applies the change-set in the CreateAgentHostInput on the AgentHostCreate builder.
@@ -134,22 +139,19 @@ func (c *AgentHostCreate) SetInput(i CreateAgentHostInput) *AgentHostCreate {
 // UpdateAgentHostInput represents a mutation input for updating agenthosts.
 type UpdateAgentHostInput struct {
 	Name          *string
-	Type          *agenthost.Type
 	Status        *agenthost.Status
 	Addr          *string
 	User          *string
 	AuthMethod    *agenthost.AuthMethod
 	Password      *string
 	SSHPrivateKey *string
+	Directory     *string
 }
 
 // Mutate applies the UpdateAgentHostInput on the AgentHostMutation builder.
 func (i *UpdateAgentHostInput) Mutate(m *AgentHostMutation) {
 	if v := i.Name; v != nil {
 		m.SetName(*v)
-	}
-	if v := i.Type; v != nil {
-		m.SetType(*v)
 	}
 	if v := i.Status; v != nil {
 		m.SetStatus(*v)
@@ -168,6 +170,9 @@ func (i *UpdateAgentHostInput) Mutate(m *AgentHostMutation) {
 	}
 	if v := i.SSHPrivateKey; v != nil {
 		m.SetSSHPrivateKey(*v)
+	}
+	if v := i.Directory; v != nil {
+		m.SetDirectory(*v)
 	}
 }
 
@@ -190,7 +195,7 @@ type CreateAgentInstanceInput struct {
 	Description     *string
 	Platform        *string
 	LastHeartbeatAt time.Time
-	Deployment      *objects.AgentInstanceDeployment
+	AxonhubBaseURL  *string
 	Status          *agentinstance.Status
 	AgentID         int
 	HostID          *int
@@ -210,8 +215,8 @@ func (i *CreateAgentInstanceInput) Mutate(m *AgentInstanceMutation) {
 		m.SetPlatform(*v)
 	}
 	m.SetLastHeartbeatAt(i.LastHeartbeatAt)
-	if v := i.Deployment; v != nil {
-		m.SetDeployment(*v)
+	if v := i.AxonhubBaseURL; v != nil {
+		m.SetAxonhubBaseURL(*v)
 	}
 	if v := i.Status; v != nil {
 		m.SetStatus(*v)
@@ -235,8 +240,7 @@ type UpdateAgentInstanceInput struct {
 	Description     *string
 	Platform        *string
 	LastHeartbeatAt *time.Time
-	ClearDeployment bool
-	Deployment      *objects.AgentInstanceDeployment
+	AxonhubBaseURL  *string
 	Status          *agentinstance.Status
 	ClearHost       bool
 	HostID          *int
@@ -256,11 +260,8 @@ func (i *UpdateAgentInstanceInput) Mutate(m *AgentInstanceMutation) {
 	if v := i.LastHeartbeatAt; v != nil {
 		m.SetLastHeartbeatAt(*v)
 	}
-	if i.ClearDeployment {
-		m.ClearDeployment()
-	}
-	if v := i.Deployment; v != nil {
-		m.SetDeployment(*v)
+	if v := i.AxonhubBaseURL; v != nil {
+		m.SetAxonhubBaseURL(*v)
 	}
 	if v := i.Status; v != nil {
 		m.SetStatus(*v)
@@ -1325,6 +1326,72 @@ func (c *PromptUpdate) SetInput(i UpdatePromptInput) *PromptUpdate {
 
 // SetInput applies the change-set in the UpdatePromptInput on the PromptUpdateOne builder.
 func (c *PromptUpdateOne) SetInput(i UpdatePromptInput) *PromptUpdateOne {
+	i.Mutate(c.Mutation())
+	return c
+}
+
+// CreatePromptProtectionRuleInput represents a mutation input for creating promptprotectionrules.
+type CreatePromptProtectionRuleInput struct {
+	Name        string
+	Description *string
+	Pattern     string
+	Settings    *objects.PromptProtectionSettings
+}
+
+// Mutate applies the CreatePromptProtectionRuleInput on the PromptProtectionRuleMutation builder.
+func (i *CreatePromptProtectionRuleInput) Mutate(m *PromptProtectionRuleMutation) {
+	m.SetName(i.Name)
+	if v := i.Description; v != nil {
+		m.SetDescription(*v)
+	}
+	m.SetPattern(i.Pattern)
+	if v := i.Settings; v != nil {
+		m.SetSettings(v)
+	}
+}
+
+// SetInput applies the change-set in the CreatePromptProtectionRuleInput on the PromptProtectionRuleCreate builder.
+func (c *PromptProtectionRuleCreate) SetInput(i CreatePromptProtectionRuleInput) *PromptProtectionRuleCreate {
+	i.Mutate(c.Mutation())
+	return c
+}
+
+// UpdatePromptProtectionRuleInput represents a mutation input for updating promptprotectionrules.
+type UpdatePromptProtectionRuleInput struct {
+	Name        *string
+	Description *string
+	Pattern     *string
+	Status      *promptprotectionrule.Status
+	Settings    *objects.PromptProtectionSettings
+}
+
+// Mutate applies the UpdatePromptProtectionRuleInput on the PromptProtectionRuleMutation builder.
+func (i *UpdatePromptProtectionRuleInput) Mutate(m *PromptProtectionRuleMutation) {
+	if v := i.Name; v != nil {
+		m.SetName(*v)
+	}
+	if v := i.Description; v != nil {
+		m.SetDescription(*v)
+	}
+	if v := i.Pattern; v != nil {
+		m.SetPattern(*v)
+	}
+	if v := i.Status; v != nil {
+		m.SetStatus(*v)
+	}
+	if v := i.Settings; v != nil {
+		m.SetSettings(v)
+	}
+}
+
+// SetInput applies the change-set in the UpdatePromptProtectionRuleInput on the PromptProtectionRuleUpdate builder.
+func (c *PromptProtectionRuleUpdate) SetInput(i UpdatePromptProtectionRuleInput) *PromptProtectionRuleUpdate {
+	i.Mutate(c.Mutation())
+	return c
+}
+
+// SetInput applies the change-set in the UpdatePromptProtectionRuleInput on the PromptProtectionRuleUpdateOne builder.
+func (c *PromptProtectionRuleUpdateOne) SetInput(i UpdatePromptProtectionRuleInput) *PromptProtectionRuleUpdateOne {
 	i.Mutate(c.Mutation())
 	return c
 }

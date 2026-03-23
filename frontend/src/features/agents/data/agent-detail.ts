@@ -26,6 +26,12 @@ const AGENT_DETAIL_QUERY = `
           order
           config
         }
+        agentBuiltinSkills {
+          name
+          enabled
+          order
+          config
+        }
         skillsPolicy {
           add
         }
@@ -41,12 +47,8 @@ const AGENT_DETAIL_QUERY = `
               platform
               description
               status
+              axonhubBaseURL
               lastHeartbeatAt
-              deployment {
-                directory
-                dockerContainerName
-                axonhubBaseUrl
-              }
               createdAt
               updatedAt
             }
@@ -71,8 +73,8 @@ type AgentInstanceNode = {
   platform: string;
   description: string;
   status: 'pending' | 'running' | 'stopped' | 'error';
+  axonhubBaseURL: string;
   lastHeartbeatAt: string | Date;
-  deployment?: { directory?: string; dockerContainerName?: string; axonhubBaseUrl?: string } | null;
   createdAt: string | Date;
   updatedAt: string | Date;
 };
@@ -93,6 +95,7 @@ type AgentDetail = {
   model: string;
   reasoningEffort: 'none' | 'low' | 'medium' | 'high';
   agentBuiltinTools: any;
+  agentBuiltinSkills: any;
   skillsPolicy: any;
   prompt?: { id?: string; content?: string } | null;
   instances?: {

@@ -26,6 +26,7 @@ import (
 	"github.com/looplj/axonhub/internal/ent/model"
 	"github.com/looplj/axonhub/internal/ent/project"
 	"github.com/looplj/axonhub/internal/ent/prompt"
+	"github.com/looplj/axonhub/internal/ent/promptprotectionrule"
 	"github.com/looplj/axonhub/internal/ent/promptversion"
 	"github.com/looplj/axonhub/internal/ent/providerquotastatus"
 	"github.com/looplj/axonhub/internal/ent/request"
@@ -145,8 +146,12 @@ func init() {
 	agentDescAgentBuiltinTools := agentFields[8].Descriptor()
 	// agent.DefaultAgentBuiltinTools holds the default value on creation for the agent_builtin_tools field.
 	agent.DefaultAgentBuiltinTools = agentDescAgentBuiltinTools.Default.([]objects.AgentBuiltinTool)
+	// agentDescAgentBuiltinSkills is the schema descriptor for agent_builtin_skills field.
+	agentDescAgentBuiltinSkills := agentFields[9].Descriptor()
+	// agent.DefaultAgentBuiltinSkills holds the default value on creation for the agent_builtin_skills field.
+	agent.DefaultAgentBuiltinSkills = agentDescAgentBuiltinSkills.Default.([]objects.AgentBuiltinSkill)
 	// agentDescSkillsPolicy is the schema descriptor for skills_policy field.
-	agentDescSkillsPolicy := agentFields[9].Descriptor()
+	agentDescSkillsPolicy := agentFields[10].Descriptor()
 	// agent.DefaultSkillsPolicy holds the default value on creation for the skills_policy field.
 	agent.DefaultSkillsPolicy = agentDescSkillsPolicy.Default.(objects.AgentSkillsPolicy)
 	agenthostMixin := schema.AgentHost{}.Mixin()
@@ -200,6 +205,10 @@ func init() {
 	agenthostDescSSHPrivateKey := agenthostFields[7].Descriptor()
 	// agenthost.DefaultSSHPrivateKey holds the default value on creation for the ssh_private_key field.
 	agenthost.DefaultSSHPrivateKey = agenthostDescSSHPrivateKey.Default.(string)
+	// agenthostDescDirectory is the schema descriptor for directory field.
+	agenthostDescDirectory := agenthostFields[8].Descriptor()
+	// agenthost.DefaultDirectory holds the default value on creation for the directory field.
+	agenthost.DefaultDirectory = agenthostDescDirectory.Default.(string)
 	agentinstanceMixin := schema.AgentInstance{}.Mixin()
 	agentinstance.Policy = privacy.NewPolicies(schema.AgentInstance{})
 	agentinstance.Hooks[0] = func(next ent.Mutator) ent.Mutator {
@@ -247,6 +256,10 @@ func init() {
 	agentinstanceDescPlatform := agentinstanceFields[5].Descriptor()
 	// agentinstance.DefaultPlatform holds the default value on creation for the platform field.
 	agentinstance.DefaultPlatform = agentinstanceDescPlatform.Default.(string)
+	// agentinstanceDescAxonhubBaseURL is the schema descriptor for axonhub_base_url field.
+	agentinstanceDescAxonhubBaseURL := agentinstanceFields[8].Descriptor()
+	// agentinstance.DefaultAxonhubBaseURL holds the default value on creation for the axonhub_base_url field.
+	agentinstance.DefaultAxonhubBaseURL = agentinstanceDescAxonhubBaseURL.Default.(string)
 	agentmemoryMixin := schema.AgentMemory{}.Mixin()
 	agentmemory.Policy = privacy.NewPolicies(schema.AgentMemory{})
 	agentmemory.Hooks[0] = func(next ent.Mutator) ent.Mutator {
@@ -850,6 +863,45 @@ func init() {
 	promptDescOrder := promptFields[7].Descriptor()
 	// prompt.DefaultOrder holds the default value on creation for the order field.
 	prompt.DefaultOrder = promptDescOrder.Default.(int)
+	promptprotectionruleMixin := schema.PromptProtectionRule{}.Mixin()
+	promptprotectionrule.Policy = privacy.NewPolicies(schema.PromptProtectionRule{})
+	promptprotectionrule.Hooks[0] = func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if err := promptprotectionrule.Policy.EvalMutation(ctx, m); err != nil {
+				return nil, err
+			}
+			return next.Mutate(ctx, m)
+		})
+	}
+	promptprotectionruleMixinHooks1 := promptprotectionruleMixin[1].Hooks()
+
+	promptprotectionrule.Hooks[1] = promptprotectionruleMixinHooks1[0]
+	promptprotectionruleMixinInters1 := promptprotectionruleMixin[1].Interceptors()
+	promptprotectionrule.Interceptors[0] = promptprotectionruleMixinInters1[0]
+	promptprotectionruleMixinFields0 := promptprotectionruleMixin[0].Fields()
+	_ = promptprotectionruleMixinFields0
+	promptprotectionruleMixinFields1 := promptprotectionruleMixin[1].Fields()
+	_ = promptprotectionruleMixinFields1
+	promptprotectionruleFields := schema.PromptProtectionRule{}.Fields()
+	_ = promptprotectionruleFields
+	// promptprotectionruleDescCreatedAt is the schema descriptor for created_at field.
+	promptprotectionruleDescCreatedAt := promptprotectionruleMixinFields0[0].Descriptor()
+	// promptprotectionrule.DefaultCreatedAt holds the default value on creation for the created_at field.
+	promptprotectionrule.DefaultCreatedAt = promptprotectionruleDescCreatedAt.Default.(func() time.Time)
+	// promptprotectionruleDescUpdatedAt is the schema descriptor for updated_at field.
+	promptprotectionruleDescUpdatedAt := promptprotectionruleMixinFields0[1].Descriptor()
+	// promptprotectionrule.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	promptprotectionrule.DefaultUpdatedAt = promptprotectionruleDescUpdatedAt.Default.(func() time.Time)
+	// promptprotectionrule.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	promptprotectionrule.UpdateDefaultUpdatedAt = promptprotectionruleDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// promptprotectionruleDescDeletedAt is the schema descriptor for deleted_at field.
+	promptprotectionruleDescDeletedAt := promptprotectionruleMixinFields1[0].Descriptor()
+	// promptprotectionrule.DefaultDeletedAt holds the default value on creation for the deleted_at field.
+	promptprotectionrule.DefaultDeletedAt = promptprotectionruleDescDeletedAt.Default.(int)
+	// promptprotectionruleDescDescription is the schema descriptor for description field.
+	promptprotectionruleDescDescription := promptprotectionruleFields[1].Descriptor()
+	// promptprotectionrule.DefaultDescription holds the default value on creation for the description field.
+	promptprotectionrule.DefaultDescription = promptprotectionruleDescDescription.Default.(string)
 	promptversionMixin := schema.PromptVersion{}.Mixin()
 	promptversion.Policy = privacy.NewPolicies(schema.PromptVersion{})
 	promptversion.Hooks[0] = func(next ent.Mutator) ent.Mutator {
@@ -986,7 +1038,7 @@ func init() {
 	// requestexecution.DefaultFormat holds the default value on creation for the format field.
 	requestexecution.DefaultFormat = requestexecutionDescFormat.Default.(string)
 	// requestexecutionDescStream is the schema descriptor for stream field.
-	requestexecutionDescStream := requestexecutionFields[12].Descriptor()
+	requestexecutionDescStream := requestexecutionFields[13].Descriptor()
 	// requestexecution.DefaultStream holds the default value on creation for the stream field.
 	requestexecution.DefaultStream = requestexecutionDescStream.Default.(bool)
 	roleMixin := schema.Role{}.Mixin()
