@@ -51,4 +51,6 @@ type PersistenceState struct {
 	// versus a stream that completed successfully but the client disconnected
 	// immediately after receiving the last chunk.
 	StreamCompleted bool
+
+	FinalStreamUsage *llm.Usage
 }

@@ -24,9 +24,7 @@ export function mergeOverrideHeaders(existing: OverrideOperation[], template: Ov
 
   for (const templateOp of template) {
     if (templateOp.op === 'set' && templateOp.path) {
-      const index = result.findIndex(
-        (op) => op.op === 'set' && op.path?.toLowerCase() === templateOp.path?.toLowerCase()
-      );
+      const index = result.findIndex((op) => op.op === 'set' && op.path?.toLowerCase() === templateOp.path?.toLowerCase());
       if (index >= 0) {
         result[index] = templateOp;
       } else {
@@ -58,9 +56,7 @@ export function mergeOverrideOperations(existing: OverrideOperation[], template:
 
     // For set and delete ops, match by path
     if ((templateOp.op === 'set' || templateOp.op === 'delete') && templateOp.path) {
-      const index = result.findIndex(
-        (op) => (op.op === 'set' || op.op === 'delete') && op.path === templateOp.path
-      );
+      const index = result.findIndex((op) => (op.op === 'set' || op.op === 'delete') && op.path === templateOp.path);
       if (index >= 0) {
         result[index] = templateOp;
       } else {
@@ -103,6 +99,7 @@ export function mergeChannelSettingsForUpdate(
     simulateCache: pick('simulateCache', existing?.simulateCache ?? undefined),
     simulateCacheMode: pick('simulateCacheMode', existing?.simulateCacheMode ?? undefined),
     splitPromptBy8192: pick('splitPromptBy8192', existing?.splitPromptBy8192 ?? undefined),
+    mergeCacheTokensIntoInput: pick('mergeCacheTokensIntoInput', existing?.mergeCacheTokensIntoInput ?? undefined),
   };
 }
 

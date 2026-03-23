@@ -635,6 +635,8 @@
   "channels.dialogs.fields.simulateCache.mode.ephemeral_1h_input_tokens": "ephemeral_1h_input_tokens",
   "channels.dialogs.fields.splitPromptBy8192.label": "Split Prompt by 8192",
   "channels.dialogs.fields.splitPromptBy8192.description": "Inject supplementary prompt guidance for 8192-character segmented output in Claude Code requests",
+  "channels.dialogs.fields.mergeCacheTokensIntoInput.label": "Merge Cache Tokens into Input",
+  "channels.dialogs.fields.mergeCacheTokensIntoInput.description": "Add cache_read_input_tokens and cache_creation_input_tokens into input_tokens, then clear cache usage fields before simulate-cache handling",
   "channels.messages.syncModelsSuccess": "Models synced successfully",
   "channels.messages.syncModelsError": "Failed to sync models: {{error}}"
 }

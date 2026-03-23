@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"time"
 
 	"github.com/looplj/axonhub/internal/ent"
+	entchannel "github.com/looplj/axonhub/internal/ent/channel"
 	"github.com/looplj/axonhub/internal/log"
 	"github.com/looplj/axonhub/internal/pkg/xcontext"
 	"github.com/looplj/axonhub/internal/server/biz"
@@ -16,7 +18,6 @@ import (
 	"github.com/looplj/axonhub/llm/pipeline/cc"
 	"github.com/looplj/axonhub/llm/streams"
 	"github.com/looplj/axonhub/llm/transformer"
-	"reflect"
 )
 
 // OutboundPersistentStream wraps a stream and tracks all responses for final saving to database.
@@ -163,12 +164,19 @@ func (ts *OutboundPersistentStream) persistResponseChunks(ctx context.Context) {
 			return
 		}
 
-		// Try to create usage log from aggregated response
-		if usage := meta.Usage; usage != nil {
-			_, err = ts.UsageLogService.CreateUsageLogFromRequest(persistCtx, ts.request, ts.requestExec, usage)
+		usageToPersist := meta.Usage
+		if ts.state != nil && ts.state.FinalStreamUsage != nil {
+			usageToPersist = ts.state.FinalStreamUsage
+		}
+
+		if usageToPersist != nil {
+			_, err = ts.UsageLogService.CreateUsageLogFromRequest(persistCtx, ts.request, ts.requestExec, usageToPersist)
 			if err != nil {
 				log.Warn(persistCtx, "Failed to create usage log from request", log.Cause(err))
 			}
+		}
+		if ts.state != nil {
+			ts.state.FinalStreamUsage = nil
 		}
 
 		// Build latency metrics from performance record
@@ -234,6 +242,8 @@ func (p *PersistentOutboundTransformer) TransformRequest(ctx context.Context, ll
 	if p.state.CurrentCandidateIndex >= len(p.state.ChannelModelsCandidates) {
 		return nil, fmt.Errorf("%w: all candidates exhausted", biz.ErrInternal)
 	}
+
+	p.state.FinalStreamUsage = nil
 
 	candidate := p.state.ChannelModelsCandidates[p.state.CurrentCandidateIndex]
 	entry := candidate.Models[p.state.CurrentModelIndex]
@@ -434,17 +444,21 @@ func injectCacheDisguiseMetadata(request *llm.Request, channel *biz.Channel) {
 
 	enabled := false
 	mode := "ephemeral_5m_input_tokens"
+	mergeCacheTokensIntoInput := false
 
-	if channel != nil && channel.Settings != nil {
+	if channel != nil && channel.Type == entchannel.TypeClaudecode && channel.Settings != nil {
 		enabled = channel.Settings.SimulateCache != nil && *channel.Settings.SimulateCache
 
 		if channel.Settings.SimulateCacheMode == "ephemeral_1h_input_tokens" {
 			mode = "ephemeral_1h_input_tokens"
 		}
+
+		mergeCacheTokensIntoInput = channel.Settings.MergeCacheTokensIntoInput != nil && *channel.Settings.MergeCacheTokensIntoInput
 	}
 
 	request.Metadata[cc.CacheDisguiseEnabledMetadataKey] = fmt.Sprintf("%t", enabled)
 	request.Metadata[cc.CacheDisguiseModeMetadataKey] = mode
+	request.Metadata[cc.CacheDisguiseMergeCacheTokensIntoInputMetadataKey] = fmt.Sprintf("%t", mergeCacheTokensIntoInput)
 }
 
 func (p *PersistentOutboundTransformer) CustomizeExecutor(executor pipeline.Executor) pipeline.Executor {
@@ -493,28 +507,41 @@ func updateCacheDisguiseMarker(ctx context.Context, request *llm.Request, channe
 	if !ok {
 		log.Info(ctx, "simulate-cache update marker skipped",
 			log.String("reason", "middleware_not_found"),
-			log.Any("outbound_type", fmt.Sprintf("%T", func() any { if channel == nil { return nil }; return channel.Outbound }())),
+			log.Any("outbound_type", fmt.Sprintf("%T", func() any {
+				if channel == nil {
+					return nil
+				}
+				return channel.Outbound
+			}())),
 		)
 		return
 	}
 
 	enabled := false
 	mode := "ephemeral_5m_input_tokens"
-	if channel != nil && channel.Settings != nil {
+	mergeCacheTokensIntoInput := false
+	if channel != nil && channel.Type == entchannel.TypeClaudecode && channel.Settings != nil {
 		enabled = channel.Settings.SimulateCache != nil && *channel.Settings.SimulateCache
 		if channel.Settings.SimulateCacheMode == "ephemeral_1h_input_tokens" {
 			mode = "ephemeral_1h_input_tokens"
 		}
+		mergeCacheTokensIntoInput = channel.Settings.MergeCacheTokensIntoInput != nil && *channel.Settings.MergeCacheTokensIntoInput
 	}
 
 	log.Info(ctx, "simulate-cache update marker",
 		log.String("request_key", requestKey),
-		log.String("channel", func() string { if channel == nil { return "" }; return channel.Name }()),
+		log.String("channel", func() string {
+			if channel == nil {
+				return ""
+			}
+			return channel.Name
+		}()),
 		log.Bool("enabled", enabled),
 		log.String("mode", mode),
+		log.Bool("merge_cache_tokens_into_input", mergeCacheTokensIntoInput),
 	)
 
-	mw.UpdateRequestMarker(requestKey, enabled, mode)
+	mw.UpdateRequestMarker(requestKey, enabled, mode, mergeCacheTokensIntoInput)
 }
 
 func lookupPromptCacheDisguiseMiddleware(channel *biz.Channel) (*cc.PromptCacheDisguiseMiddleware, bool) {

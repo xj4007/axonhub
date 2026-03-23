@@ -104,6 +104,7 @@ const CREATE_CHANNEL_MUTATION = `
           simulateCache
           simulateCacheMode
           splitPromptBy8192
+          mergeCacheTokensIntoInput
         }
       orderingWeight
       remark
@@ -202,6 +203,7 @@ const UPDATE_CHANNEL_MUTATION = `
           simulateCache
           simulateCacheMode
           splitPromptBy8192
+          mergeCacheTokensIntoInput
         }
       orderingWeight
       errorMessage
@@ -598,6 +600,7 @@ const QUERY_CHANNELS_QUERY = `
             simulateCache
             simulateCacheMode
             splitPromptBy8192
+            mergeCacheTokensIntoInput
           }
           orderingWeight
           errorMessage

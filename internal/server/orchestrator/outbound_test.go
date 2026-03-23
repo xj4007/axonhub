@@ -9,15 +9,28 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 
+	"github.com/looplj/axonhub/internal/authz"
 	"github.com/looplj/axonhub/internal/ent"
+	entchannel "github.com/looplj/axonhub/internal/ent/channel"
+	"github.com/looplj/axonhub/internal/ent/enttest"
+	"github.com/looplj/axonhub/internal/ent/requestexecution"
+	"github.com/looplj/axonhub/internal/ent/usagelog"
+	"github.com/looplj/axonhub/internal/objects"
 	"github.com/looplj/axonhub/internal/server/biz"
 	"github.com/looplj/axonhub/llm"
 	"github.com/looplj/axonhub/llm/httpclient"
+	"github.com/looplj/axonhub/llm/pipeline/cc"
 	"github.com/looplj/axonhub/llm/streams"
+	"github.com/looplj/axonhub/llm/transformer"
 )
 
 // mockTransformer is a simple mock transformer for testing.
 type mockTransformer struct{}
+
+type usageAggregateTransformer struct {
+	transformer.Outbound
+	meta llm.ResponseMeta
+}
 
 func (m *mockTransformer) TransformRequest(ctx context.Context, req *llm.Request) (*httpclient.Request, error) {
 	body, err := json.Marshal(map[string]any{
@@ -55,6 +68,67 @@ func (m *mockTransformer) AggregateStreamChunks(ctx context.Context, chunks []*h
 
 func (m *mockTransformer) APIFormat() llm.APIFormat {
 	return llm.APIFormatOpenAIChatCompletion
+}
+
+func (m *usageAggregateTransformer) TransformRequest(ctx context.Context, req *llm.Request) (*httpclient.Request, error) {
+	return (&mockTransformer{}).TransformRequest(ctx, req)
+}
+
+func (m *usageAggregateTransformer) TransformResponse(ctx context.Context, resp *httpclient.Response) (*llm.Response, error) {
+	return (&mockTransformer{}).TransformResponse(ctx, resp)
+}
+
+func (m *usageAggregateTransformer) TransformStream(ctx context.Context, stream streams.Stream[*httpclient.StreamEvent]) (streams.Stream[*llm.Response], error) {
+	return nil, nil
+}
+
+func (m *usageAggregateTransformer) TransformError(ctx context.Context, err *httpclient.Error) *llm.ResponseError {
+	return nil
+}
+
+func (m *usageAggregateTransformer) AggregateStreamChunks(ctx context.Context, chunks []*httpclient.StreamEvent) ([]byte, llm.ResponseMeta, error) {
+	return []byte(`{"id":"resp-stream"}`), m.meta, nil
+}
+
+func (m *usageAggregateTransformer) APIFormat() llm.APIFormat {
+	return llm.APIFormatOpenAIChatCompletion
+}
+
+func createStreamTestRequest(t *testing.T, ctx context.Context, client *ent.Client, ch *ent.Channel) *ent.Request {
+	t.Helper()
+
+	request, err := client.Request.Create().
+		SetProjectID(1).
+		SetChannelID(ch.ID).
+		SetModelID("gpt-4").
+		SetStatus("completed").
+		SetSource("test").
+		SetFormat("openai").
+		SetStream(true).
+		SetRequestBody([]byte(`{"model":"gpt-4","messages":[]}`)).
+		Save(ctx)
+	require.NoError(t, err)
+
+	return request
+}
+
+func createStreamTestRequestExecution(t *testing.T, ctx context.Context, client *ent.Client, request *ent.Request, ch *ent.Channel) *ent.RequestExecution {
+	t.Helper()
+
+	execution, err := client.RequestExecution.Create().
+		SetFormat(request.Format).
+		SetRequestID(request.ID).
+		SetProjectID(request.ProjectID).
+		SetChannelID(ch.ID).
+		SetModelID(request.ModelID).
+		SetRequestBody([]byte(`{}`)).
+		SetStatus(requestexecution.StatusProcessing).
+		SetStream(true).
+		SetRequestHeaders([]byte(`{}`)).
+		Save(ctx)
+	require.NoError(t, err)
+
+	return execution
 }
 
 func TestPersistentOutboundTransformer_TransformRequest_OriginalModelRestoration(t *testing.T) {
@@ -296,6 +370,102 @@ func TestPersistentOutboundTransformer_CanRetry(t *testing.T) {
 
 		require.True(t, outbound.CanRetry(retryableErr))
 	})
+}
+
+func TestInjectCacheDisguiseMetadata_OnlyForClaudeCodeChannels(t *testing.T) {
+	enabled := true
+
+	t.Run("claudecode channel propagates metadata", func(t *testing.T) {
+		request := &llm.Request{}
+		channel := &biz.Channel{Channel: &ent.Channel{
+			Type: entchannel.TypeClaudecode,
+			Settings: &objects.ChannelSettings{
+				SimulateCache:             &enabled,
+				SimulateCacheMode:         "ephemeral_1h_input_tokens",
+				MergeCacheTokensIntoInput: &enabled,
+			},
+		}}
+
+		injectCacheDisguiseMetadata(request, channel)
+
+		require.Equal(t, "true", request.Metadata[cc.CacheDisguiseEnabledMetadataKey])
+		require.Equal(t, "ephemeral_1h_input_tokens", request.Metadata[cc.CacheDisguiseModeMetadataKey])
+		require.Equal(t, "true", request.Metadata[cc.CacheDisguiseMergeCacheTokensIntoInputMetadataKey])
+	})
+
+	t.Run("non claudecode channel does not propagate metadata", func(t *testing.T) {
+		request := &llm.Request{}
+		channel := &biz.Channel{Channel: &ent.Channel{
+			Type: entchannel.TypeOpenai,
+			Settings: &objects.ChannelSettings{
+				SimulateCache:             &enabled,
+				SimulateCacheMode:         "ephemeral_1h_input_tokens",
+				MergeCacheTokensIntoInput: &enabled,
+			},
+		}}
+
+		injectCacheDisguiseMetadata(request, channel)
+
+		require.Equal(t, "false", request.Metadata[cc.CacheDisguiseEnabledMetadataKey])
+		require.Equal(t, "ephemeral_5m_input_tokens", request.Metadata[cc.CacheDisguiseModeMetadataKey])
+		require.Equal(t, "false", request.Metadata[cc.CacheDisguiseMergeCacheTokensIntoInputMetadataKey])
+	})
+}
+
+func TestOutboundPersistentStream_PersistResponseChunks_PrefersFinalStreamUsage(t *testing.T) {
+	t.Parallel()
+
+	client := enttest.NewEntClient(t, "sqlite3", "file:ent?mode=memory&_fk=0")
+	defer client.Close()
+
+	ctx := context.Background()
+	ctx = authz.WithTestBypass(ctx)
+	ctx = ent.NewContext(ctx, client)
+
+	_, requestService, _, usageLogService := setupTestServices(t, client)
+
+	ch := createTestChannel(t, ctx, client)
+	request := createStreamTestRequest(t, ctx, client, ch)
+	requestExec := createStreamTestRequestExecution(t, ctx, client, request, ch)
+
+	ts := NewOutboundPersistentStream(
+		ctx,
+		streams.SliceStream([]*httpclient.StreamEvent{}),
+		request,
+		requestExec,
+		requestService,
+		usageLogService,
+		&usageAggregateTransformer{meta: llm.ResponseMeta{Usage: &llm.Usage{
+			PromptTokens:     3,
+			CompletionTokens: 147,
+			TotalTokens:      150,
+			PromptTokensDetails: &llm.PromptTokensDetails{
+				CachedTokens:      12582,
+				WriteCachedTokens: 0,
+			},
+		}}},
+		nil,
+		&PersistenceState{FinalStreamUsage: &llm.Usage{
+			PromptTokens:     12585,
+			CompletionTokens: 147,
+			TotalTokens:      12732,
+			PromptTokensDetails: &llm.PromptTokensDetails{
+				CachedTokens:      0,
+				WriteCachedTokens: 0,
+			},
+		}},
+	)
+
+	ts.persistResponseChunks(ctx)
+
+	usageLogs, err := client.UsageLog.Query().Where(usagelog.RequestIDEQ(request.ID)).All(ctx)
+	require.NoError(t, err)
+	require.Len(t, usageLogs, 1)
+	require.Equal(t, int64(12585), usageLogs[0].PromptTokens)
+	require.Equal(t, int64(147), usageLogs[0].CompletionTokens)
+	require.Equal(t, int64(12732), usageLogs[0].TotalTokens)
+	require.Equal(t, int64(0), usageLogs[0].PromptCachedTokens)
+	require.Equal(t, int64(0), usageLogs[0].PromptWriteCachedTokens)
 }
 
 func TestPersistentOutboundTransformer_TransformRequest_WithChannelSelection(t *testing.T) {

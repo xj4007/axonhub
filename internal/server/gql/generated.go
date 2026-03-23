@@ -724,21 +724,22 @@ type ComplexityRoot struct {
 	}
 
 	ChannelSettings struct {
-		AutoTrimedModelPrefixes  func(childComplexity int) int
-		BillingHeaderValue       func(childComplexity int) int
-		BodyOverrideOperations   func(childComplexity int) int
-		DisguiseCliRequest       func(childComplexity int) int
-		ExtraModelPrefix         func(childComplexity int) int
-		HeaderOverrideOperations func(childComplexity int) int
-		HideMappedModels         func(childComplexity int) int
-		HideOriginalModels       func(childComplexity int) int
-		ModelMappings            func(childComplexity int) int
-		Proxy                    func(childComplexity int) int
-		SimulateCache            func(childComplexity int) int
-		SimulateCacheMode        func(childComplexity int) int
-		SplitPromptBy8192        func(childComplexity int) int
-		TransformOptions         func(childComplexity int) int
-		UnifiedClientId          func(childComplexity int) int
+		AutoTrimedModelPrefixes   func(childComplexity int) int
+		BillingHeaderValue        func(childComplexity int) int
+		BodyOverrideOperations    func(childComplexity int) int
+		DisguiseCliRequest        func(childComplexity int) int
+		ExtraModelPrefix          func(childComplexity int) int
+		HeaderOverrideOperations  func(childComplexity int) int
+		HideMappedModels          func(childComplexity int) int
+		HideOriginalModels        func(childComplexity int) int
+		MergeCacheTokensIntoInput func(childComplexity int) int
+		ModelMappings             func(childComplexity int) int
+		Proxy                     func(childComplexity int) int
+		SimulateCache             func(childComplexity int) int
+		SimulateCacheMode         func(childComplexity int) int
+		SplitPromptBy8192         func(childComplexity int) int
+		TransformOptions          func(childComplexity int) int
+		UnifiedClientId           func(childComplexity int) int
 	}
 
 	ChannelSuccessRate struct {
@@ -5053,6 +5054,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.ChannelSettings.HideOriginalModels(childComplexity), true
+	case "ChannelSettings.mergeCacheTokensIntoInput":
+		if e.complexity.ChannelSettings.MergeCacheTokensIntoInput == nil {
+			break
+		}
+
+		return e.complexity.ChannelSettings.MergeCacheTokensIntoInput(childComplexity), true
 	case "ChannelSettings.modelMappings":
 		if e.complexity.ChannelSettings.ModelMappings == nil {
 			break
@@ -26403,6 +26410,8 @@ func (ec *executionContext) fieldContext_Channel_settings(_ context.Context, fie
 				return ec.fieldContext_ChannelSettings_simulateCacheMode(ctx, field)
 			case "splitPromptBy8192":
 				return ec.fieldContext_ChannelSettings_splitPromptBy8192(ctx, field)
+			case "mergeCacheTokensIntoInput":
+				return ec.fieldContext_ChannelSettings_mergeCacheTokensIntoInput(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type ChannelSettings", field.Name)
 		},
@@ -30374,6 +30383,35 @@ func (ec *executionContext) _ChannelSettings_splitPromptBy8192(ctx context.Conte
 }
 
 func (ec *executionContext) fieldContext_ChannelSettings_splitPromptBy8192(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "ChannelSettings",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Boolean does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _ChannelSettings_mergeCacheTokensIntoInput(ctx context.Context, field graphql.CollectedField, obj *objects.ChannelSettings) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_ChannelSettings_mergeCacheTokensIntoInput,
+		func(ctx context.Context) (any, error) {
+			return obj.MergeCacheTokensIntoInput, nil
+		},
+		nil,
+		ec.marshalOBoolean2ᚖbool,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_ChannelSettings_mergeCacheTokensIntoInput(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	fc = &graphql.FieldContext{
 		Object:     "ChannelSettings",
 		Field:      field,
@@ -76044,7 +76082,7 @@ func (ec *executionContext) unmarshalInputChannelSettingsInput(ctx context.Conte
 		asMap[k] = v
 	}
 
-	fieldsInOrder := [...]string{"extraModelPrefix", "modelMappings", "autoTrimedModelPrefixes", "hideOriginalModels", "hideMappedModels", "proxy", "transformOptions", "headerOverrideOperations", "bodyOverrideOperations", "disguiseCliRequest", "unifiedClientId", "billingHeaderValue", "simulateCache", "simulateCacheMode", "splitPromptBy8192"}
+	fieldsInOrder := [...]string{"extraModelPrefix", "modelMappings", "autoTrimedModelPrefixes", "hideOriginalModels", "hideMappedModels", "proxy", "transformOptions", "headerOverrideOperations", "bodyOverrideOperations", "disguiseCliRequest", "unifiedClientId", "billingHeaderValue", "simulateCache", "simulateCacheMode", "splitPromptBy8192", "mergeCacheTokensIntoInput"}
 	for _, k := range fieldsInOrder {
 		v, ok := asMap[k]
 		if !ok {
@@ -76156,6 +76194,13 @@ func (ec *executionContext) unmarshalInputChannelSettingsInput(ctx context.Conte
 				return it, err
 			}
 			it.SplitPromptBy8192 = data
+		case "mergeCacheTokensIntoInput":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("mergeCacheTokensIntoInput"))
+			data, err := ec.unmarshalOBoolean2ᚖbool(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.MergeCacheTokensIntoInput = data
 		}
 	}
 
@@ -107270,6 +107315,8 @@ func (ec *executionContext) _ChannelSettings(ctx context.Context, sel ast.Select
 			out.Values[i] = ec._ChannelSettings_simulateCacheMode(ctx, field, obj)
 		case "splitPromptBy8192":
 			out.Values[i] = ec._ChannelSettings_splitPromptBy8192(ctx, field, obj)
+		case "mergeCacheTokensIntoInput":
+			out.Values[i] = ec._ChannelSettings_mergeCacheTokensIntoInput(ctx, field, obj)
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}

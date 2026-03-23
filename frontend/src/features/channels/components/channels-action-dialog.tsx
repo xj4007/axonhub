@@ -281,6 +281,9 @@ export function ChannelsActionDialog({ currentRow, duplicateFromRow, open, onOpe
   const [splitPromptBy8192, setSplitPromptBy8192] = useState<boolean>(
     initialRow?.settings?.splitPromptBy8192 ?? false
   );
+  const [mergeCacheTokensIntoInput, setMergeCacheTokensIntoInput] = useState<boolean>(
+    initialRow?.settings?.mergeCacheTokensIntoInput ?? false
+  );
 
   const defaultBillingHeaderValue = 'x-anthropic-billing-header: cc_version=2.1.50.b97; cc_entrypoint=cli; cch=00000;';
 
@@ -404,6 +407,7 @@ export function ChannelsActionDialog({ currentRow, duplicateFromRow, open, onOpe
           : 'ephemeral_5m_input_tokens'
       );
       setSplitPromptBy8192(initialRow.settings?.splitPromptBy8192 ?? false);
+      setMergeCacheTokensIntoInput(initialRow.settings?.mergeCacheTokensIntoInput ?? false);
     }
   }, [initialRow]);
 
@@ -940,6 +944,7 @@ export function ChannelsActionDialog({ currentRow, duplicateFromRow, open, onOpe
               simulateCache: simulateCache,
               simulateCacheMode: simulateCacheMode,
               splitPromptBy8192: splitPromptBy8192,
+              mergeCacheTokensIntoInput: mergeCacheTokensIntoInput,
             }
           : {
               disguiseCliRequest: undefined,
@@ -948,6 +953,7 @@ export function ChannelsActionDialog({ currentRow, duplicateFromRow, open, onOpe
               simulateCache: undefined,
               simulateCacheMode: undefined,
               splitPromptBy8192: undefined,
+              mergeCacheTokensIntoInput: undefined,
             };
 
         const updateInput = {
@@ -955,6 +961,16 @@ export function ChannelsActionDialog({ currentRow, duplicateFromRow, open, onOpe
           settings: mergeChannelSettingsForUpdate(currentRow.settings, disguiseSettings),
           type: undefined,
         } as z.infer<typeof updateChannelInputSchema>;
+
+        if (!isClaudeCodeType && updateInput.settings) {
+          delete updateInput.settings.disguiseCliRequest;
+          delete updateInput.settings.unifiedClientId;
+          delete updateInput.settings.billingHeaderValue;
+          delete updateInput.settings.simulateCache;
+          delete updateInput.settings.simulateCacheMode;
+          delete updateInput.settings.splitPromptBy8192;
+          delete updateInput.settings.mergeCacheTokensIntoInput;
+        }
 
         const apiKey = values.credentials?.apiKey || '';
         const hasApiKey = apiKey.trim().length > 0;
@@ -996,6 +1012,7 @@ export function ChannelsActionDialog({ currentRow, duplicateFromRow, open, onOpe
                 simulateCache: simulateCache,
                 simulateCacheMode: simulateCacheMode,
                 splitPromptBy8192: splitPromptBy8192,
+                mergeCacheTokensIntoInput: mergeCacheTokensIntoInput,
               }
             : {
                 disguiseCliRequest: undefined,
@@ -1004,8 +1021,19 @@ export function ChannelsActionDialog({ currentRow, duplicateFromRow, open, onOpe
                 simulateCache: undefined,
                 simulateCacheMode: undefined,
                 splitPromptBy8192: undefined,
+                mergeCacheTokensIntoInput: undefined,
               }),
         });
+
+        if (!isClaudeCodeType) {
+          delete nextSettings.disguiseCliRequest;
+          delete nextSettings.unifiedClientId;
+          delete nextSettings.billingHeaderValue;
+          delete nextSettings.simulateCache;
+          delete nextSettings.simulateCacheMode;
+          delete nextSettings.splitPromptBy8192;
+          delete nextSettings.mergeCacheTokensIntoInput;
+        }
 
         await createChannel.mutateAsync({
           ...(dataWithModels as z.infer<typeof createChannelInputSchema>),
@@ -1022,6 +1050,7 @@ export function ChannelsActionDialog({ currentRow, duplicateFromRow, open, onOpe
       setSimulateCache(false);
       setSimulateCacheMode('ephemeral_5m_input_tokens');
       setSplitPromptBy8192(false);
+      setMergeCacheTokensIntoInput(false);
       onOpenChange(false);
     } catch (_error) {
       void _error;
@@ -1415,6 +1444,7 @@ export function ChannelsActionDialog({ currentRow, duplicateFromRow, open, onOpe
                 : 'ephemeral_5m_input_tokens'
             );
             setSplitPromptBy8192(initialRow?.settings?.splitPromptBy8192 ?? false);
+            setMergeCacheTokensIntoInput(initialRow?.settings?.mergeCacheTokensIntoInput ?? false);
             // Reset provider and API format state
             if (initialRow) {
               setSelectedProvider(getProviderFromChannelType(initialRow.type) || 'openai');
@@ -2376,6 +2406,21 @@ export function ChannelsActionDialog({ currentRow, duplicateFromRow, open, onOpe
                               </div>
                               <p className='text-muted-foreground text-xs'>
                                 {t('channels.dialogs.fields.splitPromptBy8192.description')}
+                              </p>
+                            </div>
+
+                            <div className='rounded-md border p-3 space-y-3'>
+                              <div className='flex items-center gap-2'>
+                                <Checkbox
+                                  checked={mergeCacheTokensIntoInput}
+                                  onCheckedChange={(checked) => setMergeCacheTokensIntoInput(checked === true)}
+                                />
+                                <span className='text-xs font-medium'>
+                                  {t('channels.dialogs.fields.mergeCacheTokensIntoInput.label')}
+                                </span>
+                              </div>
+                              <p className='text-muted-foreground text-xs'>
+                                {t('channels.dialogs.fields.mergeCacheTokensIntoInput.description')}
                               </p>
                             </div>
                           </div>

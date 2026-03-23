@@ -108,6 +108,7 @@ type ChannelSettings {
   simulateCache: Boolean
   simulateCacheMode: String
   splitPromptBy8192: Boolean
+  mergeCacheTokensIntoInput: Boolean
 }
 
 enum CapabilityPolicy {
@@ -145,6 +146,7 @@ input ChannelSettingsInput {
   simulateCache: Boolean
   simulateCacheMode: String
   splitPromptBy8192: Boolean
+  mergeCacheTokensIntoInput: Boolean
 }
 
 type ChannelCredentials {

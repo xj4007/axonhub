@@ -80,7 +80,7 @@ type ChatCompletionOrchestrator struct {
 	UsageLogService *biz.UsageLogService
 	QuotaService    *biz.QuotaService
 	PromptProvider  PromptProvider
-	Middlewares []pipeline.Middleware
+	Middlewares     []pipeline.Middleware
 	PipelineFactory *pipeline.Factory
 	ModelMapper     *ModelMapper
 
@@ -189,6 +189,7 @@ func (processor *ChatCompletionOrchestrator) Process(ctx context.Context, reques
 	}
 
 	var middlewares []pipeline.Middleware
+	middlewares = append(middlewares, captureFinalStreamUsage(state))
 
 	// Add global middlewares
 	middlewares = append(middlewares, processor.Middlewares...)

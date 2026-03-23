@@ -35,8 +35,9 @@ const (
 	simulateCacheModeEphemeral5M = "ephemeral_5m_input_tokens"
 	simulateCacheModeEphemeral1H = "ephemeral_1h_input_tokens"
 
-	CacheDisguiseEnabledMetadataKey = "cc_simulate_cache_enabled"
-	CacheDisguiseModeMetadataKey    = "cc_simulate_cache_mode"
+	CacheDisguiseEnabledMetadataKey                   = "cc_simulate_cache_enabled"
+	CacheDisguiseModeMetadataKey                      = "cc_simulate_cache_mode"
+	CacheDisguiseMergeCacheTokensIntoInputMetadataKey = "cc_merge_cache_tokens_into_input"
 )
 
 // ConversationState tracks prompt token progression for a conversation.
@@ -228,13 +229,14 @@ func (m *StateManager) removeElementLocked(elem *list.Element) {
 }
 
 type requestMarker struct {
-	Eligible       bool
-	Enabled        bool
-	ConversationID string
-	Mode           string
-	IsSubAgent     bool
-	IsClaudeCode   bool
-	CreatedAt      time.Time
+	Eligible                  bool
+	Enabled                   bool
+	MergeCacheTokensIntoInput bool
+	ConversationID            string
+	Mode                      string
+	IsSubAgent                bool
+	IsClaudeCode              bool
+	CreatedAt                 time.Time
 }
 
 type requestMarkerStore struct {
@@ -354,8 +356,9 @@ func (m *promptCacheDisguiseMiddleware) OnInboundLlmRequest(ctx context.Context,
 	}
 
 	now := time.Now().UTC()
+	mergeCacheTokensIntoInput := isMergeCacheTokensIntoInputEnabled(request)
 	conversationID := extractConversationID(ctx, request)
-	if conversationID == "" {
+	if conversationID == "" && !mergeCacheTokensIntoInput {
 		return request, nil
 	}
 
@@ -363,13 +366,14 @@ func (m *promptCacheDisguiseMiddleware) OnInboundLlmRequest(ctx context.Context,
 	// We only snapshot stable request signals here to avoid coupling to raw request metadata propagation.
 	mode := normalizeSimulateCacheMode(extractSimulateCacheMode(request))
 	marker := requestMarker{
-		Eligible:       false,
-		Enabled:        isSimulateCacheEnabled(request),
-		ConversationID: conversationID,
-		Mode:           mode,
-		IsSubAgent:     isSubAgentRequest(request),
-		IsClaudeCode:   isClaudeCodeRequest(request) || looksLikeClaudeCodeRequest(request),
-		CreatedAt:      now,
+		Eligible:                  false,
+		Enabled:                   isSimulateCacheEnabled(request),
+		MergeCacheTokensIntoInput: mergeCacheTokensIntoInput,
+		ConversationID:            conversationID,
+		Mode:                      mode,
+		IsSubAgent:                isSubAgentRequest(request),
+		IsClaudeCode:              isClaudeCodeRequest(request) || looksLikeClaudeCodeRequest(request),
+		CreatedAt:                 now,
 	}
 	marker = m.reconcileMarkerEligibility(ctx, marker)
 	m.markers.Put(requestKey, marker, now)
@@ -409,11 +413,13 @@ func (m *promptCacheDisguiseMiddleware) OnOutboundRawRequest(ctx context.Context
 	rawEnabled := isSimulateCacheEnabledFromMetadata(request.Metadata)
 	marker.Enabled = rawEnabled
 	marker.Mode = rawMode
+	marker.MergeCacheTokensIntoInput = isMergeCacheTokensIntoInputEnabledFromMetadata(request.Metadata)
 	marker = m.reconcileMarkerEligibility(ctx, marker)
 
 	slog.InfoContext(ctx, "simulate-cache raw-request metadata",
 		slog.Bool("raw_enabled", rawEnabled),
 		slog.String("raw_mode", rawMode),
+		slog.Bool("merge_cache_tokens_into_input", marker.MergeCacheTokensIntoInput),
 		slog.Bool("marker_enabled", marker.Enabled),
 		slog.String("marker_mode", marker.Mode),
 		slog.Bool("is_claudecode", marker.IsClaudeCode),
@@ -437,6 +443,10 @@ func (m *promptCacheDisguiseMiddleware) OnOutboundLlmResponse(ctx context.Contex
 	marker, ok := m.takeRequestMarker(ctx)
 	if !ok || response == nil || response.Usage == nil {
 		return response, nil
+	}
+
+	if marker.MergeCacheTokensIntoInput {
+		mergeCacheTokensIntoInputUsage(response.Usage)
 	}
 
 	if !marker.Eligible {
@@ -466,18 +476,24 @@ func (m *promptCacheDisguiseMiddleware) OnOutboundRawStream(ctx context.Context,
 
 func (m *promptCacheDisguiseMiddleware) OnOutboundLlmStream(ctx context.Context, stream streams.Stream[*llm.Response]) (streams.Stream[*llm.Response], error) {
 	marker, ok := m.takeRequestMarker(ctx)
-	if !ok || marker.ConversationID == "" {
+	if !ok {
 		return stream, nil
 	}
 
-	if !marker.Eligible {
+	if !marker.Eligible && !marker.MergeCacheTokensIntoInput {
+		return stream, nil
+	}
+
+	if marker.Eligible && marker.ConversationID == "" && !marker.MergeCacheTokensIntoInput {
 		return stream, nil
 	}
 	return &cacheDisguiseStream{
-		inner:          stream,
-		middleware:     m,
-		conversationID: marker.ConversationID,
-		mode:           marker.Mode,
+		inner:                     stream,
+		middleware:                m,
+		conversationID:            marker.ConversationID,
+		mode:                      marker.Mode,
+		enableSimulation:          marker.Eligible && marker.ConversationID != "",
+		mergeCacheTokensIntoInput: marker.MergeCacheTokensIntoInput,
 	}, nil
 }
 
@@ -657,6 +673,22 @@ func applyForgedUsage(usage *llm.Usage, mode string, forged forgedUsage) {
 	}
 }
 
+func mergeCacheTokensIntoInputUsage(usage *llm.Usage) {
+	if usage == nil {
+		return
+	}
+
+	usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens
+	if usage.PromptTokensDetails == nil {
+		return
+	}
+
+	usage.PromptTokensDetails.CachedTokens = 0
+	usage.PromptTokensDetails.WriteCachedTokens = 0
+	usage.PromptTokensDetails.WriteCached5MinTokens = 0
+	usage.PromptTokensDetails.WriteCached1HourTokens = 0
+}
+
 func isEligibleForCacheDisguise(request *llm.Request) bool {
 	if request == nil {
 		return false
@@ -675,6 +707,15 @@ func isSimulateCacheEnabled(request *llm.Request) bool {
 	}
 
 	enabled := strings.TrimSpace(strings.ToLower(request.Metadata[CacheDisguiseEnabledMetadataKey]))
+	return enabled == "true"
+}
+
+func isMergeCacheTokensIntoInputEnabled(request *llm.Request) bool {
+	if request == nil || len(request.Metadata) == 0 {
+		return false
+	}
+
+	enabled := strings.TrimSpace(strings.ToLower(request.Metadata[CacheDisguiseMergeCacheTokensIntoInputMetadataKey]))
 	return enabled == "true"
 }
 
@@ -878,13 +919,15 @@ func extractSessionFromClaudeUserID(userID string) string {
 }
 
 type cacheDisguiseStream struct {
-	inner          streams.Stream[*llm.Response]
-	middleware     *promptCacheDisguiseMiddleware
-	conversationID string
-	mode           string
-	seenUsage      bool
-	lastRawPrompt  int64
-	lastForged     forgedUsage
+	inner                     streams.Stream[*llm.Response]
+	middleware                *promptCacheDisguiseMiddleware
+	conversationID            string
+	mode                      string
+	enableSimulation          bool
+	mergeCacheTokensIntoInput bool
+	seenUsage                 bool
+	lastRawPrompt             int64
+	lastForged                forgedUsage
 }
 
 func (s *cacheDisguiseStream) Next() bool {
@@ -894,6 +937,14 @@ func (s *cacheDisguiseStream) Next() bool {
 func (s *cacheDisguiseStream) Current() *llm.Response {
 	response := s.inner.Current()
 	if response == nil || response.Usage == nil {
+		return response
+	}
+
+	if s.mergeCacheTokensIntoInput {
+		mergeCacheTokensIntoInputUsage(response.Usage)
+	}
+
+	if !s.enableSimulation {
 		return response
 	}
 
@@ -935,7 +986,7 @@ func extractLlmRequestFromCtx(ctx context.Context) *llm.Request {
 	return nil
 }
 
-func (m *promptCacheDisguiseMiddleware) UpdateRequestMarker(requestKey string, enabled bool, mode string) {
+func (m *promptCacheDisguiseMiddleware) UpdateRequestMarker(requestKey string, enabled bool, mode string, mergeCacheTokensIntoInput bool) {
 	if requestKey == "" {
 		return
 	}
@@ -948,11 +999,13 @@ func (m *promptCacheDisguiseMiddleware) UpdateRequestMarker(requestKey string, e
 
 	marker.Enabled = enabled
 	marker.Mode = normalizeSimulateCacheMode(mode)
+	marker.MergeCacheTokensIntoInput = mergeCacheTokensIntoInput
 	marker = m.reconcileMarkerEligibility(context.Background(), marker)
 
 	slog.Info("simulate-cache marker updated",
 		slog.Bool("enabled", marker.Enabled),
 		slog.String("mode", marker.Mode),
+		slog.Bool("merge_cache_tokens_into_input", marker.MergeCacheTokensIntoInput),
 		slog.Bool("is_claudecode", marker.IsClaudeCode),
 		slog.Bool("is_subagent", marker.IsSubAgent),
 		slog.Bool("eligible", marker.Eligible),
@@ -973,10 +1026,9 @@ func looksLikeClaudeCodeRequest(request *llm.Request) bool {
 	}
 	lowerModel := strings.ToLower(strings.TrimSpace(request.Model))
 	return strings.HasPrefix(lowerModel, "claude-")
-	}
+}
 
 type llmRequestContextKey struct{}
-
 
 func isSimulateCacheEnabledFromMetadata(metadata map[string]string) bool {
 	if len(metadata) == 0 {
@@ -984,11 +1036,19 @@ func isSimulateCacheEnabledFromMetadata(metadata map[string]string) bool {
 	}
 	enabled := strings.TrimSpace(strings.ToLower(metadata[CacheDisguiseEnabledMetadataKey]))
 	return enabled == "true"
+}
+
+func isMergeCacheTokensIntoInputEnabledFromMetadata(metadata map[string]string) bool {
+	if len(metadata) == 0 {
+		return false
 	}
+	enabled := strings.TrimSpace(strings.ToLower(metadata[CacheDisguiseMergeCacheTokensIntoInputMetadataKey]))
+	return enabled == "true"
+}
 
 func extractSimulateCacheModeFromMetadata(metadata map[string]string) string {
 	if len(metadata) == 0 {
 		return ""
 	}
 	return metadata[CacheDisguiseModeMetadataKey]
-	}
+}

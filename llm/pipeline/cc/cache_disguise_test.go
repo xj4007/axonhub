@@ -12,6 +12,7 @@ import (
 	"github.com/looplj/axonhub/llm/httpclient"
 	"github.com/looplj/axonhub/llm/streams"
 )
+
 func claudeCodeSystemMessage() llm.Message {
 	billing := "x-anthropic-billing-header: cc_version=2.1.50.f15; cc_entrypoint=cli;"
 	return llm.Message{Role: "system", Content: llm.MessageContent{Content: &billing}}
@@ -65,6 +66,93 @@ func TestPromptCacheDisguise_DisabledByChannelSetting(t *testing.T) {
 	require.Nil(t, response.Usage.PromptTokensDetails)
 	require.Equal(t, int64(300), response.Usage.PromptTokens)
 	require.Equal(t, int64(320), response.Usage.TotalTokens)
+}
+
+func TestPromptCacheDisguise_MergeCacheTokensIntoInputWithoutSimulation(t *testing.T) {
+	mw := PromptCacheDisguise().(*PromptCacheDisguiseMiddleware)
+	ctx := newMarkerCtx(t)
+	request := makeEligibleRequest("conv-merge-no-sim", false, simulateCacheModeEphemeral5M)
+
+	_, err := mw.OnInboundLlmRequest(ctx, request)
+	require.NoError(t, err)
+
+	_, err = mw.OnOutboundRawRequest(ctx, &httpclient.Request{Metadata: map[string]string{
+		CacheDisguiseEnabledMetadataKey:                   "false",
+		CacheDisguiseModeMetadataKey:                      simulateCacheModeEphemeral5M,
+		CacheDisguiseMergeCacheTokensIntoInputMetadataKey: "true",
+	}})
+	require.NoError(t, err)
+
+	response := &llm.Response{Usage: &llm.Usage{
+		PromptTokens:     300,
+		CompletionTokens: 20,
+		TotalTokens:      320,
+		PromptTokensDetails: &llm.PromptTokensDetails{
+			CachedTokens:           180,
+			WriteCachedTokens:      90,
+			WriteCached5MinTokens:  90,
+			WriteCached1HourTokens: 0,
+		},
+	}}
+
+	_, err = mw.OnOutboundLlmResponse(ctx, response)
+	require.NoError(t, err)
+
+	require.NotNil(t, response.Usage.PromptTokensDetails)
+	require.Equal(t, int64(300), response.Usage.PromptTokens)
+	require.Equal(t, int64(320), response.Usage.TotalTokens)
+	require.Equal(t, int64(0), response.Usage.PromptTokensDetails.CachedTokens)
+	require.Equal(t, int64(0), response.Usage.PromptTokensDetails.WriteCachedTokens)
+	require.Equal(t, int64(0), response.Usage.PromptTokensDetails.WriteCached5MinTokens)
+	require.Equal(t, int64(0), response.Usage.PromptTokensDetails.WriteCached1HourTokens)
+}
+
+func TestPromptCacheDisguise_MergeCacheTokensIntoInputWithoutConversationID(t *testing.T) {
+	mw := PromptCacheDisguise().(*PromptCacheDisguiseMiddleware)
+	ctx := newMarkerCtx(t)
+	request := &llm.Request{
+		Model: "claude-sonnet-4-5",
+		Messages: []llm.Message{
+			claudeCodeSystemMessage(),
+			{Role: "user", Content: llm.MessageContent{Content: ptrString("hello")}},
+		},
+		Metadata: map[string]string{
+			CacheDisguiseEnabledMetadataKey:                   "false",
+			CacheDisguiseModeMetadataKey:                      simulateCacheModeEphemeral5M,
+			CacheDisguiseMergeCacheTokensIntoInputMetadataKey: "true",
+		},
+	}
+
+	_, err := mw.OnInboundLlmRequest(ctx, request)
+	require.NoError(t, err)
+
+	_, err = mw.OnOutboundRawRequest(ctx, &httpclient.Request{Metadata: map[string]string{
+		CacheDisguiseEnabledMetadataKey:                   "false",
+		CacheDisguiseModeMetadataKey:                      simulateCacheModeEphemeral5M,
+		CacheDisguiseMergeCacheTokensIntoInputMetadataKey: "true",
+	}})
+	require.NoError(t, err)
+
+	response := &llm.Response{Usage: &llm.Usage{
+		PromptTokens:     300,
+		CompletionTokens: 20,
+		TotalTokens:      320,
+		PromptTokensDetails: &llm.PromptTokensDetails{
+			CachedTokens:           180,
+			WriteCachedTokens:      90,
+			WriteCached5MinTokens:  90,
+			WriteCached1HourTokens: 0,
+		},
+	}}
+
+	_, err = mw.OnOutboundLlmResponse(ctx, response)
+	require.NoError(t, err)
+
+	require.NotNil(t, response.Usage.PromptTokensDetails)
+	require.Equal(t, int64(0), response.Usage.PromptTokensDetails.CachedTokens)
+	require.Equal(t, int64(0), response.Usage.PromptTokensDetails.WriteCachedTokens)
+	require.Equal(t, int64(0), response.Usage.PromptTokensDetails.WriteCached5MinTokens)
+	require.Equal(t, int64(0), response.Usage.PromptTokensDetails.WriteCached1HourTokens)
 }
 
 func TestPromptCacheDisguise_UpdateRequestMarkerControlsEligibility(t *testing.T) {
@@ -239,6 +327,187 @@ func TestPromptCacheDisguise_StreamReusedUsageChunkUsesLastForged(t *testing.T) 
 	require.Equal(t, firstPrompt, second.Usage.PromptTokens)
 	require.Equal(t, firstWrite, second.Usage.PromptTokensDetails.WriteCachedTokens)
 	require.Equal(t, firstRead, second.Usage.PromptTokensDetails.CachedTokens)
+}
+
+func TestPromptCacheDisguise_StreamMergeCacheTokensIntoInputWithoutSimulation(t *testing.T) {
+	mw := PromptCacheDisguise().(*PromptCacheDisguiseMiddleware)
+	ctx := newMarkerCtx(t)
+	request := makeEligibleRequest("conv-stream-merge-no-sim", false, simulateCacheModeEphemeral5M)
+
+	_, err := mw.OnInboundLlmRequest(ctx, request)
+	require.NoError(t, err)
+
+	_, err = mw.OnOutboundRawRequest(ctx, &httpclient.Request{Metadata: map[string]string{
+		CacheDisguiseEnabledMetadataKey:                   "false",
+		CacheDisguiseModeMetadataKey:                      simulateCacheModeEphemeral5M,
+		CacheDisguiseMergeCacheTokensIntoInputMetadataKey: "true",
+	}})
+	require.NoError(t, err)
+
+	stream := streams.SliceStream([]*llm.Response{
+		{Usage: &llm.Usage{
+			PromptTokens:     400,
+			CompletionTokens: 30,
+			TotalTokens:      430,
+			PromptTokensDetails: &llm.PromptTokensDetails{
+				CachedTokens:           250,
+				WriteCachedTokens:      120,
+				WriteCached5MinTokens:  120,
+				WriteCached1HourTokens: 0,
+			},
+		}},
+	})
+
+	wrapped, err := mw.OnOutboundLlmStream(ctx, stream)
+	require.NoError(t, err)
+	require.True(t, wrapped.Next())
+
+	response := wrapped.Current()
+	require.NotNil(t, response)
+	require.NotNil(t, response.Usage)
+	require.NotNil(t, response.Usage.PromptTokensDetails)
+	require.Equal(t, int64(400), response.Usage.PromptTokens)
+	require.Equal(t, int64(430), response.Usage.TotalTokens)
+	require.Equal(t, int64(0), response.Usage.PromptTokensDetails.CachedTokens)
+	require.Equal(t, int64(0), response.Usage.PromptTokensDetails.WriteCachedTokens)
+	require.Equal(t, int64(0), response.Usage.PromptTokensDetails.WriteCached5MinTokens)
+	require.Equal(t, int64(0), response.Usage.PromptTokensDetails.WriteCached1HourTokens)
+}
+
+func TestPromptCacheDisguise_StreamMergeCacheTokensIntoInputWithoutConversationID(t *testing.T) {
+	mw := PromptCacheDisguise().(*PromptCacheDisguiseMiddleware)
+	ctx := newMarkerCtx(t)
+	request := &llm.Request{
+		Model: "claude-sonnet-4-5",
+		Messages: []llm.Message{
+			claudeCodeSystemMessage(),
+			{Role: "user", Content: llm.MessageContent{Content: ptrString("hello")}},
+		},
+		Metadata: map[string]string{
+			CacheDisguiseEnabledMetadataKey:                   "false",
+			CacheDisguiseModeMetadataKey:                      simulateCacheModeEphemeral5M,
+			CacheDisguiseMergeCacheTokensIntoInputMetadataKey: "true",
+		},
+	}
+
+	_, err := mw.OnInboundLlmRequest(ctx, request)
+	require.NoError(t, err)
+
+	_, err = mw.OnOutboundRawRequest(ctx, &httpclient.Request{Metadata: map[string]string{
+		CacheDisguiseEnabledMetadataKey:                   "false",
+		CacheDisguiseModeMetadataKey:                      simulateCacheModeEphemeral5M,
+		CacheDisguiseMergeCacheTokensIntoInputMetadataKey: "true",
+	}})
+	require.NoError(t, err)
+
+	stream := streams.SliceStream([]*llm.Response{
+		{Usage: &llm.Usage{
+			PromptTokens:     400,
+			CompletionTokens: 30,
+			TotalTokens:      430,
+			PromptTokensDetails: &llm.PromptTokensDetails{
+				CachedTokens:           250,
+				WriteCachedTokens:      120,
+				WriteCached5MinTokens:  120,
+				WriteCached1HourTokens: 0,
+			},
+		}},
+	})
+
+	wrapped, err := mw.OnOutboundLlmStream(ctx, stream)
+	require.NoError(t, err)
+	require.True(t, wrapped.Next())
+
+	response := wrapped.Current()
+	require.NotNil(t, response)
+	require.NotNil(t, response.Usage)
+	require.NotNil(t, response.Usage.PromptTokensDetails)
+	require.Equal(t, int64(0), response.Usage.PromptTokensDetails.CachedTokens)
+	require.Equal(t, int64(0), response.Usage.PromptTokensDetails.WriteCachedTokens)
+	require.Equal(t, int64(0), response.Usage.PromptTokensDetails.WriteCached5MinTokens)
+	require.Equal(t, int64(0), response.Usage.PromptTokensDetails.WriteCached1HourTokens)
+}
+
+func TestPromptCacheDisguise_MergeRunsBeforeSimulateCache(t *testing.T) {
+	mw := PromptCacheDisguise().(*PromptCacheDisguiseMiddleware)
+	ctx := newMarkerCtx(t)
+	request := makeEligibleRequest("conv-merge-before-sim", true, simulateCacheModeEphemeral5M)
+	request.Metadata[CacheDisguiseMergeCacheTokensIntoInputMetadataKey] = "true"
+
+	_, err := mw.OnInboundLlmRequest(ctx, request)
+	require.NoError(t, err)
+
+	_, err = mw.OnOutboundRawRequest(ctx, &httpclient.Request{Metadata: map[string]string{
+		CacheDisguiseEnabledMetadataKey:                   "true",
+		CacheDisguiseModeMetadataKey:                      simulateCacheModeEphemeral5M,
+		CacheDisguiseMergeCacheTokensIntoInputMetadataKey: "true",
+	}})
+	require.NoError(t, err)
+
+	response := &llm.Response{Usage: &llm.Usage{
+		PromptTokens:     300,
+		CompletionTokens: 20,
+		TotalTokens:      320,
+		PromptTokensDetails: &llm.PromptTokensDetails{
+			CachedTokens:           180,
+			WriteCachedTokens:      90,
+			WriteCached5MinTokens:  90,
+			WriteCached1HourTokens: 0,
+		},
+	}}
+
+	_, err = mw.OnOutboundLlmResponse(ctx, response)
+	require.NoError(t, err)
+
+	require.NotNil(t, response.Usage.PromptTokensDetails)
+	require.Equal(t, int64(270), response.Usage.PromptTokensDetails.WriteCachedTokens)
+	require.Equal(t, int64(0), response.Usage.PromptTokensDetails.CachedTokens)
+	require.Equal(t, int64(270), response.Usage.PromptTokensDetails.WriteCached5MinTokens)
+	require.Equal(t, int64(0), response.Usage.PromptTokensDetails.WriteCached1HourTokens)
+}
+
+func TestPromptCacheDisguise_StreamMergeRunsBeforeSimulateCache(t *testing.T) {
+	mw := PromptCacheDisguise().(*PromptCacheDisguiseMiddleware)
+	ctx := newMarkerCtx(t)
+	request := makeEligibleRequest("conv-stream-merge-before-sim", true, simulateCacheModeEphemeral5M)
+	request.Metadata[CacheDisguiseMergeCacheTokensIntoInputMetadataKey] = "true"
+
+	_, err := mw.OnInboundLlmRequest(ctx, request)
+	require.NoError(t, err)
+
+	_, err = mw.OnOutboundRawRequest(ctx, &httpclient.Request{Metadata: map[string]string{
+		CacheDisguiseEnabledMetadataKey:                   "true",
+		CacheDisguiseModeMetadataKey:                      simulateCacheModeEphemeral5M,
+		CacheDisguiseMergeCacheTokensIntoInputMetadataKey: "true",
+	}})
+	require.NoError(t, err)
+
+	stream := streams.SliceStream([]*llm.Response{
+		{Usage: &llm.Usage{
+			PromptTokens:     300,
+			CompletionTokens: 20,
+			TotalTokens:      320,
+			PromptTokensDetails: &llm.PromptTokensDetails{
+				CachedTokens:           180,
+				WriteCachedTokens:      90,
+				WriteCached5MinTokens:  90,
+				WriteCached1HourTokens: 0,
+			},
+		}},
+	})
+
+	wrapped, err := mw.OnOutboundLlmStream(ctx, stream)
+	require.NoError(t, err)
+	require.True(t, wrapped.Next())
+
+	response := wrapped.Current()
+	require.NotNil(t, response)
+	require.NotNil(t, response.Usage)
+	require.NotNil(t, response.Usage.PromptTokensDetails)
+	require.Equal(t, int64(270), response.Usage.PromptTokensDetails.WriteCachedTokens)
+	require.Equal(t, int64(0), response.Usage.PromptTokensDetails.CachedTokens)
+	require.Equal(t, int64(270), response.Usage.PromptTokensDetails.WriteCached5MinTokens)
+	require.Equal(t, int64(0), response.Usage.PromptTokensDetails.WriteCached1HourTokens)
 }
 
 func TestStateManager_ForgeAndAdvance_ConcurrentNoRegression(t *testing.T) {

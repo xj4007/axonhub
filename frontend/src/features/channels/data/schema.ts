@@ -107,8 +107,8 @@ export const overrideOperationSchema = z.object({
   to: z.string().optional(),
   value: z.any().optional(),
   condition: z.string().optional(),
-})
-export type OverrideOperation = z.infer<typeof overrideOperationSchema>
+});
+export type OverrideOperation = z.infer<typeof overrideOperationSchema>;
 
 // Proxy Type
 export const proxyTypeSchema = z.enum(['disabled', 'environment', 'url']);
@@ -167,6 +167,7 @@ export const channelSettingsSchema = z.object({
     z.enum(['ephemeral_5m_input_tokens', 'ephemeral_1h_input_tokens']).optional().nullable()
   ),
   splitPromptBy8192: z.boolean().optional().nullable(),
+  mergeCacheTokensIntoInput: z.boolean().optional().nullable(),
 });
 export type ChannelSettings = z.infer<typeof channelSettingsSchema>;
 
@@ -244,7 +245,13 @@ export type Channel = z.infer<typeof channelSchema>;
 export const pricingModeSchema = z.enum(['flat_fee', 'usage_per_unit', 'usage_tiered']);
 export type PricingMode = z.infer<typeof pricingModeSchema>;
 
-export const priceItemCodeSchema = z.enum(['prompt_tokens', 'completion_tokens', 'prompt_cached_tokens', 'prompt_write_cached_tokens', 'requests']);
+export const priceItemCodeSchema = z.enum([
+  'prompt_tokens',
+  'completion_tokens',
+  'prompt_cached_tokens',
+  'prompt_write_cached_tokens',
+  'requests',
+]);
 export type PriceItemCode = z.infer<typeof priceItemCodeSchema>;
 
 export const priceTierSchema = z.object({
@@ -297,11 +304,7 @@ export const saveChannelModelPriceInputSchema = z.object({
 });
 export type SaveChannelModelPriceInput = z.infer<typeof saveChannelModelPriceInputSchema>;
 // Helper function to validate OAuth credentials
-function validateOAuthCredentials(
-  type: string,
-  apiKey: string | undefined,
-  ctx: z.RefinementCtx
-) {
+function validateOAuthCredentials(type: string, apiKey: string | undefined, ctx: z.RefinementCtx) {
   if (!apiKey) return;
 
   // For GitHub Copilot, enforce JSON format
@@ -377,7 +380,8 @@ export const createChannelInputSchema = z
     }),
   })
   .superRefine((data, ctx) => {
-    const isOAuthType = data.type === 'codex' || data.type === 'claudecode' || data.type === 'antigravity' || data.type === 'github_copilot';
+    const isOAuthType =
+      data.type === 'codex' || data.type === 'claudecode' || data.type === 'antigravity' || data.type === 'github_copilot';
     const hasApiKey = data.credentials.apiKey && data.credentials.apiKey.trim().length > 0;
     const hasApiKeys = data.credentials.apiKeys && data.credentials.apiKeys.some((k) => k.trim().length > 0);
 
@@ -470,7 +474,8 @@ export const updateChannelInputSchema = z
 
     // For OAuth validation on updates: validate if type is OAuth, or if credentials.apiKey is provided
     // (which indicates OAuth credentials are being set)
-    const isOAuthType = effectiveType === 'codex' || effectiveType === 'claudecode' || effectiveType === 'antigravity' || effectiveType === 'github_copilot';
+    const isOAuthType =
+      effectiveType === 'codex' || effectiveType === 'claudecode' || effectiveType === 'antigravity' || effectiveType === 'github_copilot';
 
     // Derive type from parent context if not available
     let derivedType = effectiveType;
@@ -485,7 +490,7 @@ export const updateChannelInputSchema = z
     // If we have an OAuth key but no type, check if it looks like Copilot credentials
     const isCopilotKey = hasApiKey && data.credentials?.apiKey?.trim().startsWith('{');
 
-    if (isOAuthType || (derivedType === 'github_copilot') || isCopilotKey) {
+    if (isOAuthType || derivedType === 'github_copilot' || isCopilotKey) {
       if (isCopilotKey && !derivedType) {
         try {
           const parsed = JSON.parse(data.credentials.apiKey);
